@@ -206,6 +206,96 @@ test("B4: a conversation survives a round trip through the supervisor", async ()
   );
 });
 
+// ---------------------------------------------------------------- Part C ----
+// The cloud box. Skipped unless one is already set up (`beamup cloud`), because
+// these tests start a metered sandbox. They always pause it again, including on
+// failure — a test suite that leaves a box running would be worse than no tests.
+
+async function withCloud(fn) {
+  const { E2BDevice } = await import("../src/device/e2b.mjs");
+  const cloud = new E2BDevice();
+  const up = await cloud.ensureUp();
+  assert.equal(up.ok, true, `could not wake the cloud box: ${up.error}`);
+  try {
+    return await fn(cloud);
+  } finally {
+    const released = await cloud.release().catch((e) => ({ warn: String(e) }));
+    assert.ok(released?.note, `the cloud box was NOT paused: ${released?.warn ?? "no result"}`);
+  }
+}
+
+test("C1: the cloud box reports itself ready", async () => {
+  await withCloud(async (cloud) => {
+    const info = await checkDevice(cloud);
+    assert.equal(info.ok, true, `probe failed: ${info.error}`);
+    assert.deepEqual(info.missing, [], `cloud is missing tools: ${info.missing?.join(", ")}`);
+    assert.equal(info.home, "/home/user");
+  });
+});
+
+test("C2: beaming to a fresh cloud folder seeds the repo and carries work home", async () => {
+  await withCloud(async (cloud) => {
+    const local = await makeRepo(tmp("cloud-local"));
+    // A folder the box has never seen: seeding has to build the repo from here.
+    const remote = `/home/user/work/e2e-${Date.now()}`;
+
+    const sessionId = "cccccccc-dddd-eeee-ffff-000000000000";
+    const proj = projectDir(configDir(), local);
+    fs.mkdirSync(proj, { recursive: true });
+    fs.writeFileSync(
+      path.join(proj, `${sessionId}.jsonl`),
+      JSON.stringify({ type: "user", cwd: local, sessionId, message: { role: "user", content: "cloudbound" } }) + "\n",
+    );
+
+    fs.writeFileSync(path.join(local, "tracked.txt"), "edited before leaving\n");
+    fs.writeFileSync(path.join(local, "fresh.txt"), "brand new\n");
+
+    const out = await beamOut({ device: cloud, remoteDir: remote, localDir: local, sessionId });
+    assert.equal(out.ok, true, `beam out failed: ${out.error}`);
+    assert.equal(out.carryRefused, undefined, `work was not carried: ${out.carryRefused}`);
+
+    const head = (await run("git", ["-C", local, "rev-parse", "HEAD"])).stdout.trim();
+    const there = await cloud.exec(`git -C ${JSON.stringify(remote)} rev-parse HEAD`);
+    assert.equal(there.stdout.trim(), head, "the seeded box must stand on the same commit");
+
+    const landed = await cloud.exec(`cat ${JSON.stringify(`${out.info.cfg}/projects/${slug(remote)}/${sessionId}.jsonl`)}`);
+    assert.match(landed.stdout, /cloudbound/, "the transcript should have shipped");
+    const carried = await cloud.exec(`cat ${JSON.stringify(`${remote}/tracked.txt`)} ${JSON.stringify(`${remote}/fresh.txt`)}`);
+    assert.match(carried.stdout, /edited before leaving/);
+    assert.match(carried.stdout, /brand new/);
+
+    // Work happens out there, then comes home.
+    await cloud.exec(`printf 'made in the cloud\\n' > ${JSON.stringify(`${remote}/cloud-only.txt`)}`);
+    const back = await beamBack({
+      device: cloud,
+      remoteDir: remote,
+      localDir: local,
+      sessionId,
+      home: out.info.home,
+      cfg: out.info.cfg,
+      departure: out.departure,
+    });
+    assert.equal(back.ok, true, `beam back failed: ${back.error}`);
+    assert.equal(back.carryRefused, undefined, `work did not come back: ${back.carryRefused}`);
+    assert.equal(fs.readFileSync(path.join(local, "cloud-only.txt"), "utf8"), "made in the cloud\n");
+    assert.equal(fs.readFileSync(path.join(local, "tracked.txt"), "utf8"), "edited before leaving\n");
+  });
+});
+
+test("C3: the launch command Claude Code is given actually starts over there", async () => {
+  // Stops short of a full session, which would need the box signed in — but
+  // proves the plugin landed and the binary runs with the flags we pass.
+  await withCloud(async (cloud) => {
+    const info = await checkDevice(cloud);
+    const { remotePlugin } = await import("../src/move.mjs");
+    const plugin = remotePlugin(info.home);
+    const present = await cloud.exec(`test -f ${JSON.stringify(`${plugin}/.claude-plugin/plugin.json`)} && echo yes`);
+    assert.equal(present.stdout.trim(), "yes", "the beamup plugin should have been shipped to the box");
+    const runs = await cloud.exec(`command claude --plugin-dir ${JSON.stringify(plugin)} --version`);
+    assert.match(runs.stdout, /Claude Code/, `claude did not run with our flags: ${runs.stderr}`);
+  });
+});
+
 // Part B needs a reachable machine. Without one, say so plainly rather than
 // reporting failures that are really a missing test fixture.
 const reachable = (await checkDevice(device)).ok;

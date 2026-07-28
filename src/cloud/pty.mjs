@@ -15,30 +15,57 @@
  *     so we feed it one. `exec` *replaces* that shell, which is what makes the
  *     PTY close when Claude Code exits rather than dropping you at a prompt in
  *     a sandbox you did not ask for.
+ *   - Swallowing the launch. That shell prints a prompt and the tty echoes the
+ *     command as its bytes arrive — both before anything of ours can run, so
+ *     `stty -echo` is already too late. Instead nothing is forwarded to the
+ *     real terminal until the launch script says it is running. The user sees
+ *     their session, never the plumbing that started it.
  *   - Restoring the terminal no matter how we leave. A relay that throws with
  *     the tty still in raw mode leaves the user's shell unusable.
  */
 
-const LAUNCH = "/tmp/beamup-launch.sh";
+/**
+ * Printed by the launch script, never forwarded. It lives inside the script
+ * rather than on the command line, so the tty's echo of `exec bash <path>`
+ * cannot contain it — which is what makes it a reliable gate.
+ */
+const READY = "__beamup_ready__";
 
 /**
  * Run a bash script in the sandbox with the user's terminal attached.
  * Resolves with its exit code.
  */
-export async function relay(sandbox, script, { timeoutMs, envs = {} } = {}) {
+export async function relay(sandbox, script, { timeoutMs, envs = {}, launchFile } = {}) {
   const size = () => ({
     cols: process.stdout.columns || 80,
     rows: process.stdout.rows || 24,
   });
 
-  await sandbox.files.write(LAUNCH, script);
+  // Not /tmp: it is sticky, and the file API cannot overwrite an existing file
+  // there, so the second beam of the session would fail where the first
+  // succeeded. Everything we write to the box lives under its own ~/.beamup.
+  await sandbox.files.write(launchFile, `printf %s ${JSON.stringify(READY)}\n${script}`);
 
-  const handle = await sandbox.pty.create({
-    ...size(),
-    timeoutMs,
-    envs,
-    onData: (data) => process.stdout.write(data),
-  });
+  // Everything up to and including the readiness marker is the shell starting
+  // up, and belongs to us rather than to the user's screen.
+  let live = false;
+  let pending = "";
+  const onData = (data) => {
+    if (live) return process.stdout.write(data);
+    pending += Buffer.from(data).toString("utf8");
+    const at = pending.indexOf(READY);
+    if (at === -1) {
+      // Keep only enough to catch a marker split across two chunks.
+      if (pending.length > READY.length * 2) pending = pending.slice(-READY.length);
+      return;
+    }
+    live = true;
+    const rest = pending.slice(at + READY.length);
+    pending = "";
+    if (rest) process.stdout.write(rest);
+  };
+
+  const handle = await sandbox.pty.create({ ...size(), timeoutMs, envs, onData });
 
   const send = (data) => {
     // Deliberately not awaited: awaiting each keystroke would serialise typing
@@ -83,9 +110,7 @@ export async function relay(sandbox, script, { timeoutMs, envs = {} } = {}) {
     for (const listener of outerInterrupts) process.off("SIGINT", listener);
     process.on("SIGINT", onInterrupt);
 
-    // Turn off the shell's echo before handing it the command, so the command
-    // itself does not flash on screen before the TUI paints over it.
-    send(new TextEncoder().encode(`stty -echo 2>/dev/null; exec bash ${LAUNCH}\n`));
+    send(new TextEncoder().encode(`exec bash ${launchFile}\n`));
 
     const result = await handle.wait();
     return result?.exitCode ?? 0;

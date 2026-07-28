@@ -212,48 +212,37 @@ After each, verify **nothing was lost on either side**.
 
 ---
 
-## Phase 7 — THE WHOLLY UNVERIFIED ONE: the cloud box
+## Phase 7 — the cloud box
 
-**Nothing in this phase has ever been run.** It was written against E2B's SDK
-and docs but never executed, because the machine it was built on has no E2B
-key. Treat every step as a hypothesis. You will need a key from
-<https://e2b.dev/dashboard> — the free tier is enough.
+This has now been run for real against E2B. What's verified, and what isn't:
 
-The parts most likely to be wrong, in order:
+**Verified end to end** (`npm run test:e2e C`, with a box set up):
+sandbox create (~350ms), provisioning (7s: node 20 and git are already in E2B's
+`base` image, Claude Code installs into `~/.npm-global`), probe, directory
+transfer both ways preserving modes/symlinks/binary content, seeding a fresh
+repo onto the same commit, pause (~360ms) and resume (~500ms) with the
+filesystem intact, and a full beamOut/beamBack round trip.
 
-1. **The PTY relay** (`src/cloud/pty.mjs`). E2B's PTY starts a shell with no way
-   to hand it a command, so beamup writes the launch script to a file and sends
-   `stty -echo; exec bash /tmp/beamup-launch.sh`. If the TUI renders garbled,
-   doesn't clear, or ignores window resizes, this is the file.
-2. **Provisioning** (`PROVISION_SCRIPT` in `src/cloud/setup.mjs`). It assumes
-   E2B's `base` template has node, that `sudo apt-get` works for git, and that
-   an `npm install -g` into `$HOME/.npm-global` succeeds. Any of those may be
-   false; the exit codes 90–93 distinguish which.
-3. **Sign-in inside the box.** The flow attaches a PTY running `claude` and then
-   verifies with `claude -p ok`. If Claude Code's login flow needs something a
-   sandbox can't do, fall back to option 2 (an API key).
+Two bugs this found, both of which only appear on a *second* run:
+- E2B's file API cannot overwrite an existing file in `/tmp` (sticky bit), so
+  the first beam worked and every one after it failed. Everything beamup writes
+  into the box now lives under `~/.beamup/`.
+- `sandbox.betaPause()` reaches the API with no authorization header on e2b
+  2.2.1 and fails — which would have left boxes running. `release()` now uses
+  the static `Sandbox.betaPause(id, {apiKey})` and reads the state back to
+  confirm.
 
-```bash
-node bin/beamup.mjs cloud            # first-run setup, start to finish
-node bin/beamup.mjs devices          # cloud should read `paused`
-node bin/beamup.mjs doctor cloud     # claude / node / git all found?
-```
+**Still unverified: a real interactive session in the box.** The tests stop at
+`claude --version` because the box has to be signed in first, and signing in
+needs a terminal. So the one thing left to check by hand:
 
-Then, from a git repo with an uncommitted edit:
-
-1. Run `node bin/beamup.mjs`, make an edit, then `/beam cloud`.
-2. Does the conversation redraw? Is your uncommitted edit present in
-   `~/work/<repo>` over there? Is it on the **same commit** as your laptop
-   (`git rev-parse HEAD` on both)?
-3. Have it create a file, then `/beam home`. Did the file come back?
-4. Does it print `cloud paused — billing stopped`?
-5. Check <https://e2b.dev/dashboard>: is the sandbox actually **paused**, not
-   running? This is the one that costs money if it's wrong.
-6. Kill the supervisor mid-session (`kill -9`) and check the dashboard again
-   within the hour — `autoPause` should put it to sleep on its own.
-
-**Report the E2B dashboard state after every phase.** A box left running is the
-worst bug this feature can have.
+1. `beamup cloud` and complete the sign-in.
+2. From a git repo: `beamup`, make an edit, `/beam cloud`.
+3. Does the TUI render properly over the relay — colours, redraw, no stray
+   shell prompt? Does Ctrl-C interrupt the turn rather than kill the session?
+   Does resizing the window reflow it?
+4. `/beam home`. Did the work come back? Did it print `cloud paused`?
+5. Check <https://e2b.dev/dashboard>: **paused**, not running.
 
 ---
 

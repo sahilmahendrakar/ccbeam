@@ -35,6 +35,16 @@ export const CLOUD_HOME = `/home/${CLOUD_USER}`;
  */
 const PATH_PRELUDE = 'export PATH="$HOME/.npm-global/bin:$PATH"; [ -f "$HOME/.beamup/env" ] && . "$HOME/.beamup/env";';
 
+/**
+ * Scratch space inside the box.
+ *
+ * Deliberately not /tmp: it is sticky, and E2B's file API cannot overwrite an
+ * existing file there — the first write of a session succeeds and every one
+ * after it fails with EACCES. Under the box's own home there is no such trap.
+ */
+const SCRATCH = `${CLOUD_HOME}/.beamup/tmp`;
+const LAUNCH_FILE = `${CLOUD_HOME}/.beamup/launch.sh`;
+
 function tmpFile(tag) {
   return path.join(fs.mkdtempSync(path.join(os.tmpdir(), `beamup-${tag}-`)), "bundle.tar.gz");
 }
@@ -172,7 +182,10 @@ export class E2BDevice {
 
   attach(script) {
     if (!this.sandbox) return Promise.resolve(-1);
-    return relay(this.sandbox, `${PATH_PRELUDE}\n${script}\n`, { timeoutMs: BACKSTOP_MS });
+    return relay(this.sandbox, `${PATH_PRELUDE}\n${script}\n`, {
+      timeoutMs: BACKSTOP_MS,
+      launchFile: LAUNCH_FILE,
+    });
   }
 
   /**
@@ -186,10 +199,11 @@ export class E2BDevice {
   async pushDir(localDir, remoteDir) {
     if (!this.sandbox) return { code: -1, stderr: "the cloud box is not connected" };
     const local = tmpFile("push");
-    const remote = `/tmp/beamup-push-${Date.now()}.tar.gz`;
+    const remote = `${SCRATCH}/push.tar.gz`;
     try {
       const tarred = await run("tar", ["czf", local, "-C", localDir, "."]);
       if (tarred.code !== 0) return { code: tarred.code, stderr: tarred.stderr };
+      await this.exec(`mkdir -p ${shq(SCRATCH)} && rm -f ${shq(remote)}`);
 
       const data = fs.readFileSync(local);
       await this.sandbox.files.write(
@@ -211,9 +225,12 @@ export class E2BDevice {
   async pullDir(remoteDir, localDir) {
     if (!this.sandbox) return { code: -1, stderr: "the cloud box is not connected" };
     const local = tmpFile("pull");
-    const remote = `/tmp/beamup-pull-${Date.now()}.tar.gz`;
+    const remote = `${SCRATCH}/pull.tar.gz`;
     try {
-      const packed = await this.exec(`tar czf ${shq(remote)} -C ${shq(remoteDir)} .`, { timeout: 120000 });
+      const packed = await this.exec(
+        `mkdir -p ${shq(SCRATCH)} && tar czf ${shq(remote)} -C ${shq(remoteDir)} .`,
+        { timeout: 120000 },
+      );
       if (packed.code !== 0) return { code: packed.code, stderr: packed.stderr };
 
       const bytes = await this.sandbox.files.read(remote, { format: "bytes" });
@@ -234,17 +251,46 @@ export class E2BDevice {
    * that resumes in about a second does not need one, and "it stopped costing
    * money the moment you left" is a promise worth more than a fast second hop.
    */
+  /**
+   * We're leaving. Pause immediately rather than after a grace period: a box
+   * that resumes in about a second does not need one, and "it stopped costing
+   * money the moment you left" is a promise worth more than a fast second hop.
+   *
+   * Paused via the static management call with the key passed explicitly. The
+   * instance method exists, but on e2b 2.2.1 it reaches the API with no
+   * authorization header and fails — which would leave the box running, so
+   * this is not a place to trust a convenience wrapper.
+   */
   async release() {
-    if (!this.sandbox) return null;
+    const sandbox = this.sandbox;
+    this.sandbox = null;
+    if (!sandbox) return null;
+
+    const key = apiKey();
+    const loaded = await this.sdk();
+    if (!loaded.ok) return { warn: `could not pause the cloud box: ${loaded.error}` };
+
     try {
-      await this.sandbox.betaPause();
-      patchCloud({ lastSeen: Date.now() });
-      return { note: "cloud paused — billing stopped" };
+      await loaded.e2b.Sandbox.betaPause(sandbox.sandboxId, { apiKey: key });
     } catch (err) {
-      return { warn: `could not pause the cloud box: ${err?.message ?? err}. It will pause itself within the hour.` };
-    } finally {
-      this.sandbox = null;
+      return {
+        warn: `could not pause the cloud box: ${err?.message ?? err}. It will pause itself within the hour.`,
+      };
     }
+
+    // Trust the API's own view rather than the absence of an exception; this is
+    // the one call whose silent failure costs the user money.
+    try {
+      const info = await loaded.e2b.Sandbox.getInfo(sandbox.sandboxId, { apiKey: key });
+      if (info.state !== "paused") {
+        return { warn: `the cloud box reports "${info.state}" after pausing — check https://e2b.dev/dashboard` };
+      }
+    } catch {
+      /* the pause itself succeeded; a failed read-back is not worth alarming over */
+    }
+
+    patchCloud({ lastSeen: Date.now() });
+    return { note: "cloud paused — billing stopped" };
   }
 
   async dispose() {
