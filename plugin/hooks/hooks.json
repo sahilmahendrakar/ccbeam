@@ -1,0 +1,15 @@
+{
+  "description": "Ends the session at the turn boundary when a teleport has been requested, so the supervisor can move it. Inert unless /teleport or /back was used.",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/stop.mjs\""
+          }
+        ]
+      }
+    ]
+  }
+}
