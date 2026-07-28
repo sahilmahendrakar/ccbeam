@@ -8,6 +8,7 @@ import { applyBundle, captureBundle, fingerprint } from "../src/carry.mjs";
 import { run } from "../src/exec.mjs";
 import { slug } from "../src/paths.mjs";
 import { parseTarget } from "../src/request.mjs";
+import { install as installShell, rcFileFor, uninstall as uninstallShell } from "../src/shell.mjs";
 
 let passed = 0;
 const tests = [];
@@ -128,6 +129,55 @@ test("fingerprint detects a tree changing while you are away", async () => {
   fs.writeFileSync(path.join(dir, "tracked.txt"), "someone typed here\n");
   const after = await fingerprint(dir);
   assert.notEqual(before, after);
+});
+
+test("shell integration installs, is idempotent, and removes cleanly", async () => {
+  const dir = tmp();
+  const rc = path.join(dir, ".zshrc");
+  const before = "export PATH=/usr/local/bin:$PATH\nalias ll='ls -la'\n";
+  fs.writeFileSync(rc, before);
+
+  const first = installShell({ shell: "zsh", rcFile: rc });
+  assert.equal(first.action, "installed");
+  assert.equal(fs.existsSync(first.backup), true, "should back the file up before editing");
+  assert.match(fs.readFileSync(rc, "utf8"), /claude\(\) \{ command ccteleport "\$@"; \}/);
+
+  const second = installShell({ shell: "zsh", rcFile: rc });
+  assert.equal(second.action, "already", "installing twice must not duplicate the block");
+
+  const removed = uninstallShell({ shell: "zsh", rcFile: rc });
+  assert.equal(removed.action, "removed");
+  assert.equal(fs.readFileSync(rc, "utf8"), before, "removal must restore the file exactly");
+});
+
+test("shell integration writes a valid fish function", () => {
+  const rc = path.join(tmp(), "config.fish");
+  installShell({ shell: "fish", rcFile: rc });
+  const text = fs.readFileSync(rc, "utf8");
+  assert.match(text, /function claude\n {4}command ccteleport \$argv\nend/);
+  assert.equal(uninstallShell({ shell: "fish", rcFile: rc }).action, "removed");
+});
+
+test("shell integration notices an existing claude alias", () => {
+  const rc = path.join(tmp(), ".bashrc");
+  fs.writeFileSync(rc, "alias claude='claude --model opus'\n");
+  const result = installShell({ shell: "bash", rcFile: rc });
+  assert.equal(result.conflict, true, "should warn rather than silently shadow");
+});
+
+test("shell integration creates a missing rc file", () => {
+  const rc = path.join(tmp(), "nested", ".bashrc");
+  const result = installShell({ shell: "bash", rcFile: rc });
+  assert.equal(result.action, "installed");
+  assert.equal(result.backup, null, "nothing to back up when the file did not exist");
+  assert.match(fs.readFileSync(rc, "utf8"), /ccteleport/);
+});
+
+test("rc file location respects ZDOTDIR and XDG_CONFIG_HOME", () => {
+  assert.equal(rcFileFor("zsh", { ZDOTDIR: "/custom" }, "/home/u"), "/custom/.zshrc");
+  assert.equal(rcFileFor("zsh", {}, "/home/u"), "/home/u/.zshrc");
+  assert.equal(rcFileFor("fish", { XDG_CONFIG_HOME: "/cfg" }, "/home/u"), "/cfg/fish/config.fish");
+  assert.equal(rcFileFor("bash", {}, "/home/u"), "/home/u/.bashrc");
 });
 
 for (const [name, fn] of tests) {

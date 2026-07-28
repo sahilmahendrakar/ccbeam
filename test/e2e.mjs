@@ -172,9 +172,21 @@ test("B3: returning brings the transcript and the work back", async () => {
   assert.equal(fs.readFileSync(path.join(local, "tracked.txt"), "utf8"), "written on the laptop\n");
 });
 
+// Part B needs a reachable machine. Without one, say so plainly rather than
+// reporting failures that are really a missing test fixture.
+const reachable = (await checkMachine(HOST)).ok;
+if (!reachable) {
+  process.stdout.write(`  ⚠ ${HOST} unreachable — skipping the ssh tests (set CCT_HOST, see README)\n`);
+}
+
 const only = process.argv[2];
+let skipped = 0;
 for (const [name, fn] of tests) {
   if (only && !name.startsWith(only)) continue;
+  if (!reachable && name.startsWith("B")) {
+    skipped++;
+    continue;
+  }
   const started = Date.now();
   try {
     await fn();
@@ -185,4 +197,5 @@ for (const [name, fn] of tests) {
     process.exitCode = 1;
   }
 }
-process.stdout.write(`\n  ${passed}/${tests.filter(([n]) => !only || n.startsWith(only)).length} passed\n`);
+const selected = tests.filter(([n]) => !only || n.startsWith(only)).length;
+process.stdout.write(`\n  ${passed}/${selected - skipped} passed${skipped ? `, ${skipped} skipped` : ""}\n`);

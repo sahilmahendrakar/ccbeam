@@ -15,15 +15,28 @@ No account. No daemon. No server. It uses the SSH you already have.
 
 ```bash
 npm i -g ccteleport
+ccteleport install-shell   # optional: keep typing `claude`
 ```
 
-Then run `ccteleport` instead of `claude`. It takes the same options and hands
-the terminal to the real Claude Code — it's a supervisor, not a replacement.
+`ccteleport` takes the same options as `claude` and hands the terminal straight
+to the real Claude Code — it's a supervisor, not a replacement.
 
 ```bash
 ccteleport                # like `claude`
 ccteleport --model opus   # any claude flag works
 ```
+
+With `install-shell`, one delimited block is added to your `.bashrc`, `.zshrc`
+or `config.fish`:
+
+```sh
+claude() { command ccteleport "$@"; }
+```
+
+so the command you type stays `claude`. This is the same trick `nvm`, `pyenv`
+and `direnv` use. `command claude` still runs Claude Code directly, and
+`ccteleport uninstall-shell` restores the file exactly as it was (it's backed up
+before the first edit either way).
 
 ## Use
 
@@ -45,6 +58,8 @@ Outside a session:
 ```bash
 ccteleport machines          list known machines
 ccteleport doctor gpu-box    check a machine is ready
+ccteleport install-shell     make `claude` teleport-capable
+ccteleport uninstall-shell   undo that
 ```
 
 ## The picker
@@ -113,6 +128,23 @@ deliberate and will not change — see below.
 
 There's no protocol to speak and no daemon on the far side; ssh connection
 sharing keeps the repeated calls at ~10ms each.
+
+### Why a supervisor, and not just a plugin
+
+The plugin half needs no supervisor at all — `/teleport` works perfectly well
+inside a normally-installed plugin. What a plugin cannot do is perform the move.
+
+Moving means ending the local `claude`, running `ssh -t <machine> claude
+--resume` **attached to your terminal**, and relaunching locally when it comes
+back. That needs a process which outlives the local session and holds the
+terminal. Hooks and MCP servers are children of `claude`: they die with it, and
+the shell takes the terminal back the instant it exits. Anything left running in
+the background that tried to read the terminal would be competing with your
+shell prompt for keystrokes.
+
+So the supervisor is not an implementation shortcut — it's the only place the
+swap can happen. Shell integration exists so that being unavoidable doesn't also
+mean being something you have to remember.
 
 ## Development
 

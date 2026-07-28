@@ -17,6 +17,7 @@ import { listLocal, listRemote } from "../src/folders.mjs";
 import { clearRequest, parseTarget, readRequest } from "../src/request.mjs";
 import { checkMachine, describeMissing, localPluginDir, remotePlugin, remoteRequestFile, teleportBack, teleportLocal, teleportOut } from "../src/move.mjs";
 import { pick } from "../src/picker.mjs";
+import { SHELLS, detectShell, install as installShell, uninstall as uninstallShell } from "../src/shell.mjs";
 import { readRemoteFile, removeRemoteFile, sshExec, sshInteractive, isOnline } from "../src/ssh.mjs";
 import { banner, bold, dim, fail, green, note, relTime, tilde, warn, yellow } from "../src/ui.mjs";
 
@@ -26,6 +27,8 @@ ${bold("ccteleport")} — move a Claude Code session between machines
   ccteleport [claude options...]   start a session you can teleport out of
   ccteleport doctor [machine]      check whether a machine is ready
   ccteleport machines              list known machines
+  ccteleport install-shell         make \`claude\` teleport-capable
+  ccteleport uninstall-shell       undo that
 
 Inside the session:
   /teleport [machine[:folder]]     move this conversation somewhere else
@@ -47,6 +50,8 @@ async function main() {
 
   if (argv[0] === "doctor") return doctor(argv[1]);
   if (argv[0] === "machines") return listMachines();
+  if (argv[0] === "install-shell") return shellIntegration(argv, true);
+  if (argv[0] === "uninstall-shell") return shellIntegration(argv, false);
   if (argv.includes("--help") && argv.length === 1) {
     process.stdout.write(HELP);
     return 0;
@@ -255,6 +260,54 @@ async function performMove(cur, dest, { departure }) {
   if (back.carried) note(`brought back ${back.carried.files} changed file(s)`);
   if (back.carryRefused) warn(back.carryRefused);
   return { ok: true, departure: null, next: { machine: LOCAL, dir: dest.dir, sessionId: cur.sessionId, home: null, cfg: null } };
+}
+
+/**
+ * `ccteleport install-shell` — so the command you type stays `claude`.
+ * The supervisor still runs; it just stops being something you have to remember.
+ */
+function shellIntegration(argv, adding) {
+  const flag = (name) => {
+    const i = argv.indexOf(name);
+    return i === -1 ? null : argv[i + 1];
+  };
+  const shell = flag("--shell") || detectShell();
+  if (!shell) {
+    fail(`could not tell which shell you use (SHELL=${process.env.SHELL || "unset"})`);
+    note(`pass one explicitly:  ccteleport ${adding ? "install-shell" : "uninstall-shell"} --shell zsh`);
+    note(`supported: ${SHELLS.join(", ")}`);
+    return 1;
+  }
+
+  const result = adding
+    ? installShell({ shell, rcFile: flag("--rc") })
+    : uninstallShell({ shell, rcFile: flag("--rc") });
+
+  if (!result.ok) {
+    fail(result.error);
+    return 1;
+  }
+
+  switch (result.action) {
+    case "installed":
+      process.stdout.write(`  ${green("✓")} added the ${shell} integration to ${result.file}\n`);
+      if (result.backup) note(`backed the file up to ${result.backup} first`);
+      if (result.conflict) warn("something else in that file already defines `claude` — ours must load last to win");
+      note(`open a new terminal (or: source ${result.file}) and \`claude\` becomes teleport-capable`);
+      note("`command claude` still runs Claude Code directly");
+      break;
+    case "already":
+      note(`already installed in ${result.file}`);
+      break;
+    case "removed":
+      process.stdout.write(`  ${green("✓")} removed the ${shell} integration from ${result.file}\n`);
+      note("open a new terminal for it to take effect");
+      break;
+    case "absent":
+      note(`nothing to remove in ${result.file}`);
+      break;
+  }
+  return 0;
 }
 
 async function doctor(host) {
