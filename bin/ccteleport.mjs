@@ -114,7 +114,10 @@ function launchLocal(cur, userArgs, bringsOwnSession, reqFile) {
 async function launchRemote(cur, reqFile) {
   const parts = [
     `cd ${sh(cur.dir)}`,
-    `CCTELEPORT_REQ=${sh(reqFile)} claude --plugin-dir ${sh(remotePlugin(cur.home))} --resume ${sh(cur.sessionId)}`,
+    // `command` so a shell function or alias named `claude` on the far machine
+    // resolves to the real binary. Without it, shell integration on both ends
+    // would make the remote launch recurse into another supervisor.
+    `CCTELEPORT_REQ=${sh(reqFile)} command claude --plugin-dir ${sh(remotePlugin(cur.home))} --resume ${sh(cur.sessionId)}`,
   ];
   if (TEST_PROMPTS) {
     parts[1] += ` -p ${sh(TEST_PROMPTS[leg++] ?? "ok")} --permission-mode bypassPermissions`;
