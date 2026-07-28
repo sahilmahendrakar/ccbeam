@@ -1,6 +1,6 @@
 ---
 description: Move this conversation to another device or folder
-argument-hint: "[device[:folder] | cloud | home]"
+argument-hint: "[device[:folder] | cloud | cloud resume | home]"
 allowed-tools: mcp__beamup__beam
 ---
 
@@ -8,5 +8,7 @@ Call the `mcp__beamup__beam` tool now.
 
 - If the user supplied a target, pass it through verbatim as `target`: `$ARGUMENTS`
 - If they supplied nothing, call the tool with no `target` so they get the picker.
+
+`<device> resume` is a different request from `<device>`: it opens a list of conversations already living on that device and picks one up, leaving this conversation where it is. Only pass `resume` when the user actually typed it.
 
 Then reply with a single short line — something like "Beaming." or "Heading to gpu-box." Do not call any other tool, do not summarise the conversation, and do not try to move anything yourself: the session is moved for you the moment your turn ends.

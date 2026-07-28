@@ -145,7 +145,40 @@ A few decisions worth knowing about:
   first time you set the cloud box up. Installing beamup pulls nothing for a
   feature you haven't used.
 
-`beamup cloud destroy` gets rid of it. `beamup cloud repair` builds a new one.
+### Leaving a conversation there, and picking it up again
+
+Because the box persists, a conversation you took there stays there. You can
+close the laptop and come back to it:
+
+```
+/beam cloud resume           pick up a conversation living on the box
+```
+
+```bash
+beamup cloud sessions        list them
+beamup cloud resume          pick one up, starting a session here
+beamup cloud rm <id>         delete one
+```
+
+`resume` is a **separate verb from `/beam` on purpose**. `/beam cloud` means
+*this* conversation moves there, keeping its session id — which is the whole
+reason its context survives. `/beam cloud resume` picks up a *different*
+conversation and leaves the one you're in exactly where it was. If those shared
+a verb, `/beam` could silently abandon your place; they don't, so it can't.
+
+The session picker shows what you first said, the folder, when it was last
+touched, and marks any conversation still running. Ctrl-D deletes the
+highlighted one (with a confirm); the folder it worked in is kept, because
+beamup doesn't delete your files. Conversations untouched for 30 days are
+pruned when the box wakes, and it says so when that happens.
+
+A note on what "detached" really means: work genuinely continues in the box
+after you disconnect, and a paused box freezes a turn mid-flight and resumes it
+intact. But beamup doesn't reattach to the old terminal — it doesn't need to.
+The transcript *is* the session, so picking a conversation back up is just
+`claude --resume` over there, which is what every beam already does.
+
+`beamup cloud destroy` gets rid of the box. `beamup cloud repair` builds a new one.
 
 ## Requirements
 

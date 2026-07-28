@@ -33,7 +33,9 @@ const TOOLS = [
           description:
             "Where to go: a device name ('gpu-box'), a device and folder ('gpu-box:~/src/api'), " +
             "'cloud' for the E2B cloud box, 'local' for this machine, 'home' to return to where " +
-            "this session started, or omitted to open the picker.",
+            "this session started, or omitted to open the picker. " +
+            "Add ' resume' ('cloud resume') to pick up a DIFFERENT conversation already living on " +
+            "that device instead of taking this one there — only when the user asks for that.",
         },
       },
     },
@@ -50,6 +52,9 @@ function call(name, args) {
   if (!target) return "Beam requested — a picker will open. Reply with one short line; the move happens when your turn ends.";
   if (target.toLowerCase() === "home") {
     return "Returning to where this session started. Reply with one short line; the move happens when your turn ends.";
+  }
+  if (/\s+resume$/i.test(target)) {
+    return `A picker of conversations on ${target.replace(/\s+resume$/i, "")} will open. Reply with one short line; this conversation stays where it is.`;
   }
   return `Beam to ${target} requested. Reply with one short line; the move happens when your turn ends.`;
 }

@@ -142,6 +142,38 @@ export async function beamOut({ device, remoteDir, localDir, sessionId, carry = 
   return result;
 }
 
+/**
+ * Go to a device and pick up a conversation that already lives there.
+ *
+ * The opposite of beamOut in the one way that matters: nothing travels. No
+ * transcript is shipped (theirs is the one we want), no repo is seeded (it is
+ * already there, or the session would not exist), and no uncommitted work is
+ * carried — the current repo's diff has no business in another conversation's
+ * folder. All this does is make sure the device can run the session.
+ */
+export async function beamAdopt({ device, sessionId, remoteDir }) {
+  const up = await device.ensureUp({ onProgress: note });
+  if (!up.ok) return { ok: false, error: up.error };
+  if (up.note) note(up.note);
+
+  const info = await checkDevice(device);
+  if (!info.ok) return { ok: false, error: info.error };
+  if (info.missing.length) return { ok: false, error: describeMissing(device, info.missing) };
+
+  const present = await device.exec(
+    `CFG="$CLAUDE_CONFIG_DIR"; [ -n "$CFG" ] || CFG="$HOME/.claude"; ` +
+      `ls "$CFG"/projects/*/${q(sessionId)}.jsonl >/dev/null 2>&1 && echo yes || echo no`,
+  );
+  if (present.stdout.trim() !== "yes") {
+    return { ok: false, error: `session ${sessionId} is no longer on ${device.name}` };
+  }
+
+  const pushed = await pushRuntime(device, info.home);
+  if (pushed.code !== 0) return { ok: false, error: `could not ship the plugin: ${pushed.stderr}` };
+
+  return { ok: true, info, dir: remoteDir };
+}
+
 /** Bring the session — and any work done out there — back to this machine. */
 export async function beamBack({ device, remoteDir, localDir, sessionId, home, cfg, departure }) {
   const stage = tmpDir("return");

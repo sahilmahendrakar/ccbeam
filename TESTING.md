@@ -232,6 +232,18 @@ Two bugs this found, both of which only appear on a *second* run:
   the static `Sandbox.betaPause(id, {apiKey})` and reads the state back to
   confirm.
 
+Session resume and cleanup are covered too (C4): listing conversations in the
+box with their opening line, adopting one without shipping a transcript or
+touching the current repo, refusing a session id that isn't there, and deleting
+every copy of a conversation while keeping the folder it worked in.
+
+Detach/reattach was measured directly: work continues after disconnect (a PTY
+kept ticking 5 → 10 while nothing was attached), the process survives with the
+same pid, and pause freezes a running turn and resumes it intact. E2B's
+`commands.connect()` has no `onPty` option, so there is no visual replay of a
+live TUI — which does not matter, because reattaching is `claude --resume` and
+the transcript is the session.
+
 **Still unverified: a real interactive session in the box.** The tests stop at
 `claude --version` because the box has to be signed in first, and signing in
 needs a terminal. So the one thing left to check by hand:
@@ -243,6 +255,9 @@ needs a terminal. So the one thing left to check by hand:
    Does resizing the window reflow it?
 4. `/beam home`. Did the work come back? Did it print `cloud paused`?
 5. Check <https://e2b.dev/dashboard>: **paused**, not running.
+6. Then `/beam cloud resume` — does the conversation you just had appear in the
+   list, with its opening line? Does picking it redraw it? Does Ctrl-D offer to
+   delete, and does `esc` still pause the box on the way out?
 
 ---
 

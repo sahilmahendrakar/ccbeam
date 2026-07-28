@@ -25,19 +25,30 @@ test("slug matches Claude Code's directory naming", () => {
 });
 
 test("parseTarget handles every form the user can type", () => {
-  assert.deepEqual(parseTarget(""), { device: null, dir: null, home: false });
-  assert.deepEqual(parseTarget("gpu-box"), { device: "gpu-box", dir: null, home: false });
-  assert.deepEqual(parseTarget("gpu-box:~/src"), { device: "gpu-box", dir: "~/src", home: false });
-  assert.deepEqual(parseTarget("local"), { device: "local", dir: null, home: false });
-  assert.deepEqual(parseTarget("cloud"), { device: "cloud", dir: null, home: false });
-  assert.deepEqual(parseTarget("  gpu:/a/b  "), { device: "gpu", dir: "/a/b", home: false });
+  assert.deepEqual(parseTarget(""), { device: null, dir: null, home: false, resume: false });
+  assert.deepEqual(parseTarget("gpu-box"), { device: "gpu-box", dir: null, home: false, resume: false });
+  assert.deepEqual(parseTarget("gpu-box:~/src"), { device: "gpu-box", dir: "~/src", home: false, resume: false });
+  assert.deepEqual(parseTarget("local"), { device: "local", dir: null, home: false, resume: false });
+  assert.deepEqual(parseTarget("cloud"), { device: "cloud", dir: null, home: false, resume: false });
+  assert.deepEqual(parseTarget("  gpu:/a/b  "), { device: "gpu", dir: "/a/b", home: false, resume: false });
+});
+
+test("`resume` is a separate verb, not a way of spelling `beam`", () => {
+  // The distinction that keeps /beam from ever abandoning your conversation.
+  assert.deepEqual(parseTarget("cloud resume"), { device: "cloud", dir: null, home: false, resume: true });
+  assert.deepEqual(parseTarget("cloud  RESUME"), { device: "cloud", dir: null, home: false, resume: true });
+  assert.deepEqual(parseTarget("gpu-box resume"), { device: "gpu-box", dir: null, home: false, resume: true });
+  // A plain beam is untouched by it.
+  assert.equal(parseTarget("cloud").resume, false);
+  // A folder called "resume" is a folder, not the verb.
+  assert.deepEqual(parseTarget("cloud:~/resume"), { device: "cloud", dir: "~/resume", home: false, resume: false });
 });
 
 test("`home` is reserved, but a device named home stays reachable", () => {
-  assert.deepEqual(parseTarget("home"), { device: null, dir: null, home: true });
-  assert.deepEqual(parseTarget("HOME"), { device: null, dir: null, home: true });
+  assert.deepEqual(parseTarget("home"), { device: null, dir: null, home: true, resume: false });
+  assert.deepEqual(parseTarget("HOME"), { device: null, dir: null, home: true, resume: false });
   // Explicit folder syntax escapes the reservation.
-  assert.deepEqual(parseTarget("home:~/src"), { device: "home", dir: "~/src", home: false });
+  assert.deepEqual(parseTarget("home:~/src"), { device: "home", dir: "~/src", home: false, resume: false });
 });
 
 async function makeRepo() {

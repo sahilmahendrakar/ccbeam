@@ -239,7 +239,7 @@ test("C2: beaming to a fresh cloud folder seeds the repo and carries work home",
     // A folder the box has never seen: seeding has to build the repo from here.
     const remote = `/home/user/work/e2e-${Date.now()}`;
 
-    const sessionId = "cccccccc-dddd-eeee-ffff-000000000000";
+    const sessionId = `cccccccc-dddd-eeee-ffff-${String(Date.now()).slice(-12)}`;
     const proj = projectDir(configDir(), local);
     fs.mkdirSync(proj, { recursive: true });
     fs.writeFileSync(
@@ -293,6 +293,51 @@ test("C3: the launch command Claude Code is given actually starts over there", a
     assert.equal(present.stdout.trim(), "yes", "the beamup plugin should have been shipped to the box");
     const runs = await cloud.exec(`command claude --plugin-dir ${JSON.stringify(plugin)} --version`);
     assert.match(runs.stdout, /Claude Code/, `claude did not run with our flags: ${runs.stderr}`);
+  });
+});
+
+test("C4: a conversation living in the box can be listed, resumed and deleted", async () => {
+  await withCloud(async (cloud) => {
+    const { beamAdopt } = await import("../src/move.mjs");
+    const { listSessions, removeSession } = await import("../src/cloud/sessions.mjs");
+
+    // A conversation that exists only over there — the detached-session case.
+    const id = `e2e${Date.now()}-aaaa-bbbb-cccc-dddddddddddd`;
+    const dir = "/home/user/work/resume-me";
+    const info = await checkDevice(cloud);
+    const proj = `${info.cfg}/projects/${slug(dir)}`;
+    const line = JSON.stringify({
+      type: "user",
+      cwd: dir,
+      sessionId: id,
+      message: { role: "user", content: "left running in the cloud" },
+    });
+    await cloud.exec(
+      `mkdir -p ${JSON.stringify(proj)} ${JSON.stringify(dir)} && printf '%s\\n' ${JSON.stringify(line)} > ${JSON.stringify(`${proj}/${id}.jsonl`)}`,
+    );
+
+    const listed = await listSessions(cloud);
+    const mine = listed.find((s) => s.id === id);
+    assert.ok(mine, `the session should be listed: ${listed.map((s) => s.id).join(", ")}`);
+    assert.equal(mine.cwd, dir);
+    assert.match(mine.label, /left running in the cloud/, `label was "${mine.label}"`);
+
+    // Adopting it must not ship our transcript or touch our repo.
+    const adopted = await beamAdopt({ device: cloud, sessionId: id, remoteDir: dir });
+    assert.equal(adopted.ok, true, `adopt failed: ${adopted.error}`);
+    assert.equal(adopted.dir, dir);
+
+    // Adopting something that isn't there must refuse rather than invent it.
+    const ghost = await beamAdopt({ device: cloud, sessionId: "no-such-session-id", remoteDir: dir });
+    assert.equal(ghost.ok, false);
+    assert.match(ghost.error, /no longer on cloud/);
+
+    const removed = await removeSession(cloud, id);
+    assert.equal(removed.ok, true, removed.error);
+    assert.equal((await listSessions(cloud)).some((s) => s.id === id), false, "it should be gone");
+    // The folder it worked in is deliberately kept.
+    const kept = await cloud.exec(`test -d ${JSON.stringify(dir)} && echo yes`);
+    assert.equal(kept.stdout.trim(), "yes", "deleting a conversation must not delete anyone's files");
   });
 });
 

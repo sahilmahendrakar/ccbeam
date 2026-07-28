@@ -23,6 +23,7 @@ import { run } from "../exec.mjs";
 import { relay } from "../cloud/pty.mjs";
 import { BACKSTOP_MS, apiKey, patchCloud, readCloud } from "../cloud/config.mjs";
 import { ensureE2B } from "../cloud/sdk.mjs";
+import { DEFAULT_PRUNE_DAYS, pruneSessions } from "../cloud/sessions.mjs";
 
 export const CLOUD_USER = "user";
 export const CLOUD_HOME = `/home/${CLOUD_USER}`;
@@ -50,6 +51,9 @@ function tmpFile(tag) {
 }
 
 export class E2BDevice {
+  /** Pruning is a per-process housekeeping chore, not a per-connection one. */
+  static pruned = false;
+
   constructor() {
     this.name = "cloud";
     this.kind = "cloud";
@@ -84,6 +88,7 @@ export class E2BDevice {
       try {
         this.sandbox = await Sandbox.connect(stored.sandboxId, { apiKey: key, timeoutMs: BACKSTOP_MS });
         patchCloud({ lastSeen: Date.now() });
+        await this.prune({ onProgress });
         return { ok: true };
       } catch (err) {
         // Killed from the E2B dashboard, or expired past recovery. Say so
@@ -123,6 +128,21 @@ export class E2BDevice {
 
     patchCloud({ sandboxId: this.sandbox.sandboxId, template, createdAt: Date.now(), lastSeen: Date.now() });
     return { ok: true, sandboxId: this.sandbox.sandboxId };
+  }
+
+  /**
+   * Drop conversations nobody has opened in a long time.
+   *
+   * Once per process, on connect. A cloud box otherwise accumulates every
+   * session you ever took there, and an unbounded list is its own mess — but
+   * this deletes history, so it says so out loud rather than tidying silently.
+   */
+  async prune({ onProgress = () => {} } = {}) {
+    if (E2BDevice.pruned) return;
+    E2BDevice.pruned = true;
+    const days = readCloud()?.pruneDays ?? DEFAULT_PRUNE_DAYS;
+    const { pruned } = await pruneSessions(this, { days }).catch(() => ({ pruned: 0 }));
+    if (pruned) onProgress(`pruned ${pruned} conversation(s) untouched for ${days}+ days`);
   }
 
   async state() {

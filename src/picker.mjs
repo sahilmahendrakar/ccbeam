@@ -14,7 +14,7 @@ const CLEAR_DOWN = `${ESC}[J`;
  * the picker lives here and not in the conversation. Choosing where to go
  * should not cost a model round trip.
  */
-export async function pick({ title, rows, render, footer, preselect = 0 }) {
+export async function pick({ title, rows, render, footer, preselect = 0, onDelete = null }) {
   if (!process.stdin.isTTY || !process.stdout.isTTY) return null;
   if (!rows.length) return null;
 
@@ -73,6 +73,14 @@ export async function pick({ title, rows, render, footer, preselect = 0 }) {
       if (!key) return;
       if (key.name === "escape" || (key.ctrl && key.name === "c")) return finish(null);
       if (key.name === "return" || key.name === "enter") return finish(visible[index] ?? null);
+
+      // Ctrl-D rather than a bare letter: plain keys belong to the filter, and
+      // a delete you can trigger by mistyping is not one you want.
+      if (onDelete && key.ctrl && key.name === "d") {
+        const victim = visible[index];
+        if (!victim) return;
+        return finish({ __deleted: victim });
+      }
 
       if (key.name === "up") index = Math.max(0, index - 1);
       else if (key.name === "down") index = Math.min(visible.length - 1, index + 1);

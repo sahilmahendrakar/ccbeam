@@ -48,14 +48,31 @@ export function clearRequest(file = requestPath()) {
  * config is still reachable as `home:` with an explicit folder.
  */
 export const HOME = "home";
+export const RESUME = "resume";
 
 export function parseTarget(text) {
-  const arg = (text ?? "").trim();
-  if (!arg) return { device: null, dir: null, home: false };
+  let arg = (text ?? "").trim();
+  if (!arg) return { device: null, dir: null, home: false, resume: false };
+
+  /**
+   * `<device> resume` is a different act from `<device>`, and deliberately a
+   * different verb. `/beam cloud` moves *this* conversation there, keeping its
+   * session id — which is why context survives. `/beam cloud resume` picks up a
+   * conversation already living there, abandoning the current one. Overloading
+   * the first to sometimes mean the second would let `/beam` lose your place.
+   */
+  let resume = false;
+  const trailing = arg.match(/\s+(\S+)$/);
+  if (trailing && trailing[1].toLowerCase() === RESUME) {
+    resume = true;
+    arg = arg.slice(0, trailing.index).trim();
+  }
+  if (!arg) return { device: null, dir: null, home: false, resume };
+
   const i = arg.indexOf(":");
   if (i === -1) {
-    if (arg.toLowerCase() === HOME) return { device: null, dir: null, home: true };
-    return { device: arg, dir: null, home: false };
+    if (arg.toLowerCase() === HOME) return { device: null, dir: null, home: true, resume: false };
+    return { device: arg, dir: null, home: false, resume };
   }
-  return { device: arg.slice(0, i) || null, dir: arg.slice(i + 1) || null, home: false };
+  return { device: arg.slice(0, i) || null, dir: arg.slice(i + 1) || null, home: false, resume };
 }

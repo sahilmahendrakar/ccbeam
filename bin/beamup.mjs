@@ -23,6 +23,7 @@ import { repairAuth, setupCloud } from "../src/cloud/setup.mjs";
 import { listLocal, listRemote } from "../src/folders.mjs";
 import { clearRequest, parseTarget, readRequest } from "../src/request.mjs";
 import {
+  beamAdopt,
   beamBack,
   beamLocal,
   beamOut,
@@ -33,7 +34,8 @@ import {
   remoteRequestFile,
 } from "../src/move.mjs";
 import { pick } from "../src/picker.mjs";
-import { askSecret } from "../src/prompt.mjs";
+import { confirm, askSecret } from "../src/prompt.mjs";
+import { describeSession, listSessions, pruneSessions, removeSession } from "../src/cloud/sessions.mjs";
 import { SHELLS, detectShell, install as installShell, uninstall as uninstallShell } from "../src/shell.mjs";
 import { banner, bold, dim, fail, green, note, relTime, tilde, warn, yellow } from "../src/ui.mjs";
 
@@ -45,13 +47,17 @@ ${bold("beamup")} — move a Claude Code session between devices
   beamup doctor [device]         check whether a device is ready
   beamup cloud [key|auth|repair|destroy]
                                  set up or manage the cloud box
+  beamup cloud sessions          list conversations living on the cloud box
+  beamup cloud resume            pick one up, starting a session here
+  beamup cloud rm <id>           delete one
   beamup install-shell           make \`claude\` beam-capable
   beamup uninstall-shell         undo that
 
 Inside the session:
   /beam                          pick a device, then a folder
   /beam gpu-box[:~/src]          go straight there
-  /beam cloud                    go to your cloud box
+  /beam cloud                    take this conversation to your cloud box
+  /beam cloud resume             pick up a conversation already living there
   /beam home                     return to where this session started
 
 Devices come from your ~/.ssh/config — there is nothing to install or run on
@@ -69,7 +75,9 @@ async function main() {
 
   if (argv[0] === "doctor") return doctor(argv[1]);
   if (argv[0] === "devices") return listDevices();
-  if (argv[0] === "cloud") return cloudCommand(argv.slice(1));
+  const resumingCloud =
+    argv[0] === "cloud" && ["resume", "--resume"].includes(argv[1]) ? argv.slice(2) : null;
+  if (argv[0] === "cloud" && !resumingCloud) return cloudCommand(argv.slice(1));
   if (argv[0] === "install-shell") return shellIntegration(argv, true);
   if (argv[0] === "uninstall-shell") return shellIntegration(argv, false);
   if (argv.includes("--help") && argv.length === 1) {
@@ -80,7 +88,7 @@ async function main() {
   const origin = { device: LOCAL, dir: process.cwd() };
   let cur = { device: LOCAL, dir: process.cwd(), sessionId: null, home: null, cfg: null, handle: null };
   let departure = null;
-  const userArgs = argv;
+  const userArgs = resumingCloud ?? argv;
   const bringsOwnSession = userArgs.some((a) =>
     ["--resume", "-r", "--continue", "-c", "--session-id", "--from-pr"].includes(a),
   );
@@ -102,6 +110,23 @@ async function main() {
   }
 
   try {
+    // `beamup cloud resume` opens on the cloud box rather than here.
+    if (resumingCloud) {
+      const dest = await pickSessionOn(CLOUD, cur);
+      if (!dest) {
+        await releasePendingWake();
+        return 1;
+      }
+      const moved = await performMove(cur, dest, { departure });
+      if (!moved.ok) {
+        fail(moved.error ?? "could not resume that conversation");
+        await releasePendingWake();
+        return 1;
+      }
+      cur = moved.next;
+      recordVisit(cur.device, cur.dir);
+    }
+
     for (;;) {
       const local = cur.device === LOCAL;
       const reqFile = local ? path.join(stateDir(), `req-${process.pid}.json`) : remoteRequestFile(cur.home);
@@ -187,7 +212,7 @@ async function remoteNewestSession(cur) {
 
 /** Turn a request into a concrete device + directory, asking if needed. */
 async function resolveDestination(req, cur, origin) {
-  let { device, dir, home } = parseTarget(req.target);
+  let { device, dir, home, resume } = parseTarget(req.target);
   if (req.action === "back" || home) return { device: origin.device, dir: origin.dir };
 
   if (!device) {
@@ -207,6 +232,14 @@ async function resolveDestination(req, cur, origin) {
       return null;
     }
     device = chosen.name;
+  }
+
+  if (resume) {
+    if (device === LOCAL) {
+      fail("`resume` is for picking up a conversation on another device — use --resume for this one");
+      return null;
+    }
+    return pickSessionOn(device, cur);
   }
 
   if (!dir) {
@@ -258,6 +291,78 @@ async function releasePendingWake() {
   if (released?.warn) warn(released.warn);
 }
 
+/**
+ * The session picker behind `/beam <device> resume`.
+ *
+ * Deliberately a separate screen from the folder picker, reached by a separate
+ * verb, because it does a separate thing: it abandons the conversation you are
+ * in and picks up another. Ctrl-D deletes the highlighted one — a cloud box
+ * accumulates conversations, and there should be a way to tidy up from the
+ * place you notice the mess.
+ */
+async function pickSessionOn(name, cur) {
+  // Already sitting on this device? Use the live connection. Opening a second
+  // one and then releasing it would pause the box we are working in.
+  const live = cur.device === name && cur.handle ? cur.handle : null;
+  let handle = live;
+  if (!handle) {
+    try {
+      handle = await getDevice(name);
+    } catch (err) {
+      fail(String(err.message ?? err));
+      return null;
+    }
+    const up = await handle.ensureUp({ onProgress: note });
+    if (!up.ok) {
+      fail(up.error);
+      await handle.dispose();
+      return null;
+    }
+    pendingWake = handle;
+  }
+
+  for (;;) {
+    const rows = await listSessions(handle);
+    if (!rows.length) {
+      fail(`no conversations on ${name} yet — \`/beam ${name}\` takes this one there`);
+      await releasePendingWake();
+      return null;
+    }
+
+    const chosen = await pick({
+      title: bold(`  ${name} — resume a conversation`),
+      rows,
+      footer: dim("↑↓ select · ⏎ resume · ^D delete · type to filter · esc cancel"),
+      onDelete: true,
+      render: (s) => ({
+        text: `${(s.label || "—").slice(0, 44).padEnd(45)} ${dim(
+          [tilde(s.cwd), relTime(s.at), describeSession(s)].filter(Boolean).join(" · "),
+        )}`,
+      }),
+    });
+
+    if (!chosen) {
+      await releasePendingWake();
+      return null;
+    }
+
+    if (chosen.__deleted) {
+      const victim = chosen.__deleted;
+      const yes = await confirm(`delete "${victim.label || victim.id}"? the folder it worked in is kept`, {
+        default: false,
+      });
+      if (yes) {
+        const removed = await removeSession(handle, victim.id);
+        if (removed.ok) note(`deleted ${victim.id}`);
+        else fail(removed.error);
+      }
+      continue; // back to a freshly-read list
+    }
+
+    return { device: name, dir: chosen.cwd, sessionId: chosen.id, adopt: true };
+  }
+}
+
 /** Folder listing needs a live connection, which for cloud means waking it. */
 async function listRemoteOn(name) {
   let handle;
@@ -293,6 +398,51 @@ async function expandDir(name, dir) {
 
 async function performMove(cur, dest, { departure }) {
   const sameDevice = dest.device === cur.device;
+
+  // Picking up a conversation that already lives over there. Nothing travels,
+  // so there is no carry to reason about and no departure to remember.
+  if (dest.adopt) {
+    let handle = sameDevice ? cur.handle : null;
+    if (!handle) {
+      handle = pendingWake?.name === dest.device ? pendingWake : await getDevice(dest.device);
+      if (pendingWake?.name === dest.device) pendingWake = null;
+    }
+
+    // Leaving a different remote device behind: bring its session home first,
+    // so work done there is never stranded by switching conversations.
+    if (!sameDevice && cur.device !== LOCAL) {
+      const home = await performMove(cur, { device: LOCAL, dir: process.cwd() }, { departure });
+      if (!home.ok) return home;
+      cur = home.next;
+    }
+
+    const adopted = await beamAdopt({ device: handle, sessionId: dest.sessionId, remoteDir: dest.dir });
+    if (!adopted.ok) {
+      if (!sameDevice) {
+        const released = await handle.release().catch(() => null);
+        if (released?.note) note(released.note);
+      }
+      return adopted;
+    }
+
+    if (cur.sessionId && cur.sessionId !== dest.sessionId) {
+      note(`left your other conversation where it was (${cur.sessionId.slice(0, 8)})`);
+    }
+    note(`resuming ${dest.sessionId.slice(0, 8)} in ${tilde(dest.dir)}`);
+
+    return {
+      ok: true,
+      departure: null,
+      next: {
+        device: dest.device,
+        dir: dest.dir,
+        sessionId: dest.sessionId,
+        home: adopted.info.home,
+        cfg: adopted.info.cfg,
+        handle,
+      },
+    };
+  }
 
   // Hopping straight between two remote devices goes via home, so there is
   // only ever one path out and one path back to keep correct.
@@ -418,6 +568,53 @@ async function cloudCommand(args) {
   if (sub === "auth") {
     const result = await repairAuth();
     return result.ok ? 0 : 1;
+  }
+
+  if (sub === "sessions" || sub === "rm") {
+    const handle = await getDevice(CLOUD);
+    const up = await handle.ensureUp({ onProgress: note });
+    if (!up.ok) {
+      fail(up.error);
+      return 1;
+    }
+    try {
+      if (sub === "rm") {
+        const id = args[1];
+        if (!id) {
+          fail("which one? `beamup cloud sessions` lists them");
+          return 1;
+        }
+        const removed = await removeSession(handle, id);
+        if (!removed.ok) {
+          fail(removed.error);
+          return 1;
+        }
+        process.stdout.write(
+          `  ${green("✓")} deleted ${id}${removed.removed > 1 ? ` (${removed.removed} copies)` : ""}\n`,
+        );
+        note("the folder it worked in was left alone");
+        return 0;
+      }
+
+      const rows = await listSessions(handle);
+      if (!rows.length) {
+        note("no conversations on the cloud box yet");
+        return 0;
+      }
+      for (const row of rows) {
+        const mark = row.live ? green("●") : dim("·");
+        process.stdout.write(
+          `  ${mark} ${row.id.slice(0, 8)}  ${(row.label || "—").slice(0, 44).padEnd(45)} ${dim(
+            [tilde(row.cwd), relTime(row.at), describeSession(row)].filter(Boolean).join(" · "),
+          )}\n`,
+        );
+      }
+      note("resume one with `beamup cloud resume`, delete with `beamup cloud rm <id>`");
+      return 0;
+    } finally {
+      const released = await handle.release().catch(() => null);
+      if (released?.note) note(released.note);
+    }
   }
 
   const result = await setupCloud({ recreate: sub === "repair" });
