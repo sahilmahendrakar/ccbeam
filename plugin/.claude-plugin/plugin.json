@@ -1,8 +1,8 @@
 {
-  "name": "ccteleport",
+  "name": "beamup",
   "version": "0.1.0",
-  "description": "Move this Claude Code session to another machine or folder, carrying the conversation and your uncommitted work with it. Provides /teleport and /back. Loaded automatically by the ccteleport supervisor; it does nothing on its own.",
+  "description": "Move this Claude Code session to another device or folder, carrying the conversation and your uncommitted work with it. Provides /beam. Loaded automatically by the beamup supervisor; it does nothing on its own.",
   "author": {
-    "name": "ccteleport"
+    "name": "beamup"
   }
 }

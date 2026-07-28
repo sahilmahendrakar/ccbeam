@@ -1,10 +1,10 @@
 {
-  "name": "ccteleport",
+  "name": "beamup",
   "version": "0.1.0",
-  "description": "Move a Claude Code session between machines. Same conversation, same context, different computer underneath.",
+  "description": "Move a Claude Code session between devices — your machines over ssh, or a cloud sandbox on your own account. Same conversation, different computer underneath.",
   "type": "module",
   "bin": {
-    "ccteleport": "bin/ccteleport.mjs"
+    "beamup": "bin/beamup.mjs"
   },
   "files": [
     "bin",
@@ -26,7 +26,9 @@
     "claude",
     "ssh",
     "remote",
-    "teleport",
+    "beam",
+    "sandbox",
+    "e2b",
     "cli"
   ],
   "license": "MIT"

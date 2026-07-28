@@ -1,5 +1,5 @@
 {
-  "description": "Ends the session at the turn boundary when a teleport has been requested, so the supervisor can move it. Inert unless /teleport or /back was used.",
+  "description": "Ends the session at the turn boundary when a beam has been requested, so the supervisor can move it. Inert unless /beam was used.",
   "hooks": {
     "Stop": [
       {

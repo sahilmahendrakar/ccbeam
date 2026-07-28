@@ -2,7 +2,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { run } from "./exec.mjs";
 import { configDir, projectDir } from "./paths.mjs";
-import { sshExec } from "./ssh.mjs";
 
 /**
  * The picker's menu is Claude Code's own history: every directory you have
@@ -50,8 +49,8 @@ function parse(tsv) {
   return out;
 }
 
-export async function listRemote(host) {
-  const r = await sshExec(host, LIST_SCRIPT, { timeout: 25000 });
+export async function listRemote(device) {
+  const r = await device.exec(LIST_SCRIPT, { timeout: 25000 });
   if (r.code !== 0) return [];
   return parse(r.stdout);
 }
@@ -123,8 +122,8 @@ export async function gitState(dir) {
 }
 
 /** Does this directory exist on the far side? */
-export async function remoteDirExists(host, dir) {
-  const r = await sshExec(host, `test -d ${JSON.stringify(dir)} && echo yes || echo no`);
+export async function remoteDirExists(device, dir) {
+  const r = await device.exec(`test -d ${JSON.stringify(dir)} && echo yes || echo no`);
   return r.stdout.trim() === "yes";
 }
 

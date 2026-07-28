@@ -4,7 +4,7 @@ import { pipeline, q, run, runInherit } from "./exec.mjs";
 import { stateDir } from "./paths.mjs";
 
 /**
- * A teleport makes several ssh calls in a row — probe the machine, list its
+ * A beam makes several ssh calls in a row — probe the machine, list its
  * folders, check git state, ship the transcript, launch. Without connection
  * sharing each of those pays a full handshake (~300ms); with it, every call
  * after the first is ~10ms. This is what makes the picker feel instant.
@@ -38,7 +38,7 @@ export function sshInteractive(host, script) {
   return runInherit("ssh", ["-t", ...sshArgs(host), `bash -lc ${q(script)}`]);
 }
 
-/** What we need to know about a machine before teleporting to it. */
+/** What we need to know about a machine before beaming to it. */
 export async function probe(host) {
   const script = [
     'echo "home=$HOME"',

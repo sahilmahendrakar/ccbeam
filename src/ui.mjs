@@ -28,14 +28,14 @@ export function tilde(p, home = process.env.HOME) {
 }
 
 /**
- * The one thing the user must never be unsure about is which machine they are
- * on. Liana's rule is to never mention infrastructure; here it is the opposite
- * — say it loudly at every transition.
+ * The one thing the user must never be unsure about is which device they are
+ * on — especially when one of them bills by the second. Say it loudly at every
+ * transition.
  */
-export function banner(machine, dir, { local = false } = {}) {
-  const mark = local ? "⌂" : "⚡";
-  const where = local ? `local:${tilde(dir)}` : `${machine}:${tilde(dir)}`;
-  const hint = local ? "" : dim("  ·  /back to return");
+export function banner(device, dir, { local = false, cloud = false } = {}) {
+  const mark = local ? "⌂" : cloud ? "☁" : "⚡";
+  const where = local ? `local:${tilde(dir)}` : `${device}:${tilde(dir)}`;
+  const hint = local ? "" : dim("  ·  /beam home to return");
   process.stdout.write(`\n${cyan(bold(` ${mark} ${where}`))}${hint}\n\n`);
 }
 

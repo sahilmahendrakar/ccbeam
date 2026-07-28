@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Unit tests for the pure parts: slugs, targets, machines, carrying work. */
+/** Unit tests for the pure parts: slugs, targets, devices, carrying and seeding. */
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -8,13 +8,14 @@ import { applyBundle, captureBundle, fingerprint } from "../src/carry.mjs";
 import { run } from "../src/exec.mjs";
 import { slug } from "../src/paths.mjs";
 import { parseTarget } from "../src/request.mjs";
+import { seedRepo } from "../src/seed.mjs";
 import { install as installShell, rcFileFor, uninstall as uninstallShell } from "../src/shell.mjs";
 
 let passed = 0;
 const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
 
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "cct-unit-"));
+const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "beamup-unit-"));
 
 test("slug matches Claude Code's directory naming", () => {
   // Verified against real Claude Code output.
@@ -24,11 +25,19 @@ test("slug matches Claude Code's directory naming", () => {
 });
 
 test("parseTarget handles every form the user can type", () => {
-  assert.deepEqual(parseTarget(""), { machine: null, dir: null });
-  assert.deepEqual(parseTarget("gpu-box"), { machine: "gpu-box", dir: null });
-  assert.deepEqual(parseTarget("gpu-box:~/src"), { machine: "gpu-box", dir: "~/src" });
-  assert.deepEqual(parseTarget("local"), { machine: "local", dir: null });
-  assert.deepEqual(parseTarget("  gpu:/a/b  "), { machine: "gpu", dir: "/a/b" });
+  assert.deepEqual(parseTarget(""), { device: null, dir: null, home: false });
+  assert.deepEqual(parseTarget("gpu-box"), { device: "gpu-box", dir: null, home: false });
+  assert.deepEqual(parseTarget("gpu-box:~/src"), { device: "gpu-box", dir: "~/src", home: false });
+  assert.deepEqual(parseTarget("local"), { device: "local", dir: null, home: false });
+  assert.deepEqual(parseTarget("cloud"), { device: "cloud", dir: null, home: false });
+  assert.deepEqual(parseTarget("  gpu:/a/b  "), { device: "gpu", dir: "/a/b", home: false });
+});
+
+test("`home` is reserved, but a device named home stays reachable", () => {
+  assert.deepEqual(parseTarget("home"), { device: null, dir: null, home: true });
+  assert.deepEqual(parseTarget("HOME"), { device: null, dir: null, home: true });
+  // Explicit folder syntax escapes the reservation.
+  assert.deepEqual(parseTarget("home:~/src"), { device: "home", dir: "~/src", home: false });
 });
 
 async function makeRepo() {
@@ -140,7 +149,7 @@ test("shell integration installs, is idempotent, and removes cleanly", async () 
   const first = installShell({ shell: "zsh", rcFile: rc });
   assert.equal(first.action, "installed");
   assert.equal(fs.existsSync(first.backup), true, "should back the file up before editing");
-  assert.match(fs.readFileSync(rc, "utf8"), /claude\(\) \{ command ccteleport "\$@"; \}/);
+  assert.match(fs.readFileSync(rc, "utf8"), /claude\(\) \{ command beamup "\$@"; \}/);
 
   const second = installShell({ shell: "zsh", rcFile: rc });
   assert.equal(second.action, "already", "installing twice must not duplicate the block");
@@ -154,7 +163,7 @@ test("shell integration writes a valid fish function", () => {
   const rc = path.join(tmp(), "config.fish");
   installShell({ shell: "fish", rcFile: rc });
   const text = fs.readFileSync(rc, "utf8");
-  assert.match(text, /function claude\n {4}command ccteleport \$argv\nend/);
+  assert.match(text, /function claude\n {4}command beamup \$argv\nend/);
   assert.equal(uninstallShell({ shell: "fish", rcFile: rc }).action, "removed");
 });
 
@@ -170,7 +179,7 @@ test("shell integration creates a missing rc file", () => {
   const result = installShell({ shell: "bash", rcFile: rc });
   assert.equal(result.action, "installed");
   assert.equal(result.backup, null, "nothing to back up when the file did not exist");
-  assert.match(fs.readFileSync(rc, "utf8"), /ccteleport/);
+  assert.match(fs.readFileSync(rc, "utf8"), /beamup/);
 });
 
 test("rc file location respects ZDOTDIR and XDG_CONFIG_HOME", () => {
@@ -178,6 +187,130 @@ test("rc file location respects ZDOTDIR and XDG_CONFIG_HOME", () => {
   assert.equal(rcFileFor("zsh", {}, "/home/u"), "/home/u/.zshrc");
   assert.equal(rcFileFor("fish", { XDG_CONFIG_HOME: "/cfg" }, "/home/u"), "/cfg/fish/config.fish");
   assert.equal(rcFileFor("bash", {}, "/home/u"), "/home/u/.bashrc");
+});
+
+/**
+ * A Device that is just this machine.
+ *
+ * The point of the Device seam is that everything above it is transport-free,
+ * which means the seeding and carrying logic can be driven for real — bash,
+ * git, tar, the lot — with no ssh host and no cloud account in sight.
+ */
+class FakeDevice {
+  constructor() {
+    this.name = "fake";
+    this.kind = "ssh";
+  }
+  async ensureUp() {
+    return { ok: true };
+  }
+  async exec(script) {
+    return run("bash", ["-c", script]);
+  }
+  async pushDir(localDir, remoteDir) {
+    return run("bash", ["-c", `mkdir -p "${remoteDir}" && cp -a "${localDir}/." "${remoteDir}/"`]);
+  }
+  async pullDir(remoteDir, localDir) {
+    return run("bash", ["-c", `mkdir -p "${localDir}" && cp -a "${remoteDir}/." "${localDir}/"`]);
+  }
+  async release() {
+    return null;
+  }
+  async dispose() {}
+}
+
+test("seeding puts a fresh device on the exact commit we left", async () => {
+  const origin = await makeRepo();
+  fs.writeFileSync(path.join(origin, "second.txt"), "more history\n");
+  await run("git", ["-C", origin, "add", "-A"]);
+  await run("git", ["-C", origin, "commit", "-qm", "second"]);
+  const head = (await run("git", ["-C", origin, "rev-parse", "HEAD"])).stdout.trim();
+  const branch = (await run("git", ["-C", origin, "rev-parse", "--abbrev-ref", "HEAD"])).stdout.trim();
+
+  const dest = path.join(tmp(), "landing");
+  const result = await seedRepo({
+    device: new FakeDevice(),
+    localDir: origin,
+    remoteDir: dest,
+    home: tmp(),
+  });
+
+  assert.equal(result.seeded, true, `seed failed: ${result.error}`);
+  assert.equal(result.head, head);
+  assert.equal((await run("git", ["-C", dest, "rev-parse", "HEAD"])).stdout.trim(), head, "must land on the same commit");
+  assert.equal((await run("git", ["-C", dest, "rev-parse", "--abbrev-ref", "HEAD"])).stdout.trim(), branch);
+  assert.equal(fs.readFileSync(path.join(dest, "second.txt"), "utf8"), "more history\n");
+  // The bundle was a transport, not a remote worth keeping.
+  assert.equal((await run("git", ["-C", dest, "remote"])).stdout.trim(), "");
+});
+
+test("seeding a carried patch onto a fresh device applies cleanly", async () => {
+  // The whole reason seeding exists: a patch may only land on its own base
+  // commit, and a brand-new cloud box has no commits at all.
+  const origin = await makeRepo();
+  fs.writeFileSync(path.join(origin, "tracked.txt"), "edited before leaving\n");
+  fs.writeFileSync(path.join(origin, "fresh.txt"), "brand new\n");
+
+  const dest = path.join(tmp(), "landing");
+  const device = new FakeDevice();
+  const seeded = await seedRepo({ device, localDir: origin, remoteDir: dest, home: tmp() });
+  assert.equal(seeded.seeded, true, `seed failed: ${seeded.error}`);
+
+  const bundle = tmp();
+  await captureBundle(origin, bundle);
+  const applied = await applyBundle(dest, bundle);
+  assert.equal(applied.ok, true, `apply failed: ${applied.reason} ${applied.detail ?? ""}`);
+  assert.equal(fs.readFileSync(path.join(dest, "tracked.txt"), "utf8"), "edited before leaving\n");
+  assert.equal(fs.readFileSync(path.join(dest, "fresh.txt"), "utf8"), "brand new\n");
+});
+
+test("seeding survives a detached HEAD", async () => {
+  const origin = await makeRepo();
+  fs.writeFileSync(path.join(origin, "tracked.txt"), "second\n");
+  await run("git", ["-C", origin, "commit", "-aqm", "second"]);
+  await run("git", ["-C", origin, "checkout", "-q", "--detach", "HEAD~1"]);
+  const head = (await run("git", ["-C", origin, "rev-parse", "HEAD"])).stdout.trim();
+
+  const dest = path.join(tmp(), "landing");
+  const result = await seedRepo({ device: new FakeDevice(), localDir: origin, remoteDir: dest, home: tmp() });
+  assert.equal(result.seeded, true, `seed failed: ${result.error}`);
+  assert.equal((await run("git", ["-C", dest, "rev-parse", "HEAD"])).stdout.trim(), head);
+});
+
+test("seeding is a no-op where the repo already is", async () => {
+  const origin = await makeRepo();
+  const dest = tmp();
+  await run("git", ["clone", "-q", origin, dest]);
+  const result = await seedRepo({ device: new FakeDevice(), localDir: origin, remoteDir: dest, home: tmp() });
+  assert.equal(result.seeded, false, "an ssh box you have used before must not be re-cloned");
+  assert.equal(result.error, undefined);
+});
+
+test("the device list always offers cloud, and ssh config cannot shadow it", async () => {
+  // Point HOME at a scratch dir so this reads our fixtures, not the real ones.
+  const home = tmp();
+  const realHome = process.env.HOME;
+  fs.mkdirSync(path.join(home, ".ssh"), { recursive: true });
+  fs.writeFileSync(
+    path.join(home, ".ssh", "config"),
+    ["Host gpu-box", "  HostName 10.0.0.1", "Host cloud", "  HostName imposter", "Host *", "  User me", ""].join("\n"),
+  );
+  process.env.HOME = home;
+  try {
+    const { CLOUD, LOCAL, cloudWorkDir, describeState, devices, sshHosts } = await import(
+      `../src/devices.mjs?fresh=${Date.now()}`
+    );
+    assert.deepEqual(sshHosts(), ["gpu-box"], "`cloud` in ssh config must not become a device");
+
+    const rows = devices(LOCAL);
+    assert.equal(rows[0].name, LOCAL, "local is always first");
+    assert.equal(rows[rows.length - 1].name, CLOUD, "cloud is always last");
+    assert.equal(rows.filter((r) => r.name === CLOUD).length, 1, "exactly one cloud row");
+    assert.equal(describeState(rows[rows.length - 1]), "not set up yet");
+    assert.equal(cloudWorkDir("/home/me/dev/jungle"), "/home/user/work/jungle");
+  } finally {
+    process.env.HOME = realHome;
+  }
 });
 
 for (const [name, fn] of tests) {

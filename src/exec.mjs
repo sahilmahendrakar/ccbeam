@@ -2,9 +2,9 @@ import { spawn } from "node:child_process";
 
 /**
  * Claude Code marks its own subprocesses so nested sessions don't write
- * transcripts. ccteleport is a supervisor, not a nested agent — if we inherit
+ * transcripts. beamup is a supervisor, not a nested agent — if we inherit
  * these, the session we launch silently stops saving and there is nothing to
- * teleport. Scrubbed from every child we start.
+ * beam. Scrubbed from every child we start.
  */
 const INHERITED_MARKERS = [
   "CLAUDE_CODE_CHILD_SESSION",

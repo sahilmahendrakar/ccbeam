@@ -6,16 +6,16 @@ import { stateDir } from "./paths.mjs";
  * How the session tells the supervisor to move.
  *
  * A slash command cannot take over the terminal — tool output is captured, not
- * written to the tty — so `/teleport` does not move anything itself. It drops a
+ * written to the tty — so `/beam` does not move anything itself. It drops a
  * request file; the plugin's Stop hook ends the session at the turn boundary
  * (so the transcript is complete on disk); the supervisor, which has been
  * waiting on the child all along, reads the file and performs the move.
  *
- * The path travels in CCTELEPORT_REQ so the plugin never has to guess which
+ * The path travels in BEAMUP_REQ so the plugin never has to guess which
  * session it belongs to.
  */
 export function requestPath(env = process.env) {
-  return env.CCTELEPORT_REQ || path.join(stateDir(), "request.json");
+  return env.BEAMUP_REQ || path.join(stateDir(), "request.json");
 }
 
 export function writeRequest(req, file = requestPath()) {
@@ -40,13 +40,22 @@ export function clearRequest(file = requestPath()) {
 }
 
 /**
- * `/teleport gpu-box:~/src` and `/teleport gpu-box` and `/teleport` are all
- * valid; anything absent is chosen in the picker.
+ * `/beam gpu-box:~/src`, `/beam gpu-box`, `/beam cloud`, `/beam home` and a
+ * bare `/beam` are all valid; anything absent is chosen in the picker.
+ *
+ * `home` is reserved: it means the device and folder this session started in,
+ * however many hops ago. A device you happen to have named `home` in your ssh
+ * config is still reachable as `home:` with an explicit folder.
  */
+export const HOME = "home";
+
 export function parseTarget(text) {
   const arg = (text ?? "").trim();
-  if (!arg) return { machine: null, dir: null };
+  if (!arg) return { device: null, dir: null, home: false };
   const i = arg.indexOf(":");
-  if (i === -1) return { machine: arg, dir: null };
-  return { machine: arg.slice(0, i) || null, dir: arg.slice(i + 1) || null };
+  if (i === -1) {
+    if (arg.toLowerCase() === HOME) return { device: null, dir: null, home: true };
+    return { device: arg, dir: null, home: false };
+  }
+  return { device: arg.slice(0, i) || null, dir: arg.slice(i + 1) || null, home: false };
 }

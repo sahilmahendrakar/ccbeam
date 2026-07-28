@@ -4,32 +4,32 @@ import path from "node:path";
 import { q, run } from "./exec.mjs";
 import { applyBundle, captureBundle, describeRefusal, fingerprint, isRepo } from "./carry.mjs";
 import { configDir, projectDir, slug, stateDir } from "./paths.mjs";
-import { probe, pullDir, pushDir, sshExec } from "./ssh.mjs";
+import { seedRepo } from "./seed.mjs";
 import { note, warn } from "./ui.mjs";
 
 const PKG_ROOT = path.resolve(new URL("..", import.meta.url).pathname);
 
 export const localPluginDir = () => path.join(PKG_ROOT, "plugin");
-export const remoteRuntime = (home) => `${home}/.ccteleport/runtime`;
+export const remoteRuntime = (home) => `${home}/.beamup/runtime`;
 export const remotePlugin = (home) => `${remoteRuntime(home)}/plugin`;
-export const remoteRequestFile = (home) => `${home}/.ccteleport/request.json`;
+export const remoteRequestFile = (home) => `${home}/.beamup/request.json`;
 
 function tmpDir(tag) {
-  return fs.mkdtempSync(path.join(os.tmpdir(), `ccteleport-${tag}-`));
+  return fs.mkdtempSync(path.join(os.tmpdir(), `beamup-${tag}-`));
 }
 
 /**
  * Everything the far side needs to run: the plugin Claude Code loads, and the
- * helper that applies a carried bundle. Shipped on every teleport so the two
- * machines can never drift to incompatible versions.
+ * helper that applies a carried bundle. Shipped on every beam so the two
+ * devices can never drift to incompatible versions.
  */
-export async function pushRuntime(host, home) {
+export async function pushRuntime(device, home) {
   const stage = tmpDir("runtime");
   for (const dir of ["plugin", "src", "scripts"]) {
     await run("cp", ["-a", path.join(PKG_ROOT, dir), stage]);
   }
   await run("cp", ["-a", path.join(PKG_ROOT, "package.json"), stage]);
-  const res = await pushDir(host, stage, remoteRuntime(home));
+  const res = await device.pushDir(stage, remoteRuntime(home));
   fs.rmSync(stage, { recursive: true, force: true });
   return res;
 }
@@ -47,8 +47,8 @@ function stageSession(cfg, dir, sessionId) {
   return stage;
 }
 
-export async function checkMachine(host) {
-  const info = await probe(host);
+export async function checkDevice(device) {
+  const info = await device.probe();
   if (!info.ok) return { ok: false, error: info.error };
 
   const missing = [];
@@ -58,53 +58,72 @@ export async function checkMachine(host) {
   return { ...info, missing };
 }
 
-export function describeMissing(host, missing) {
-  const lines = [`${host} is missing: ${missing.join(", ")}`];
+export function describeMissing(device, missing) {
+  const lines = [`${device.name} is missing: ${missing.join(", ")}`];
   if (missing.includes("claude")) {
-    lines.push(`  install Claude Code there, then sign in:  ssh ${host} -t 'claude auth login'`);
+    if (device.kind === "cloud") {
+      lines.push("  the cloud box was not provisioned — run:  beamup cloud repair");
+    } else {
+      lines.push(`  install Claude Code there, then sign in:  ssh ${device.name} -t 'claude auth login'`);
+    }
   }
-  if (missing.includes("node")) lines.push("  ccteleport's plugin needs Node 18+ on that machine");
+  if (missing.includes("node")) lines.push("  beamup's plugin needs Node 18+ on that device");
   return lines.join("\n");
 }
 
 /**
- * Move a session from this machine to a remote directory.
+ * Move a session from this machine to a directory on a device.
  * Returns the information the supervisor needs to launch there.
  */
-export async function teleportOut({ host, remoteDir, localDir, sessionId, carry = true }) {
-  const info = await checkMachine(host);
+export async function beamOut({ device, remoteDir, localDir, sessionId, carry = true }) {
+  const up = await device.ensureUp();
+  if (!up.ok) return { ok: false, error: up.error };
+  if (up.note) note(up.note);
+
+  const info = await checkDevice(device);
   if (!info.ok) return { ok: false, error: info.error };
-  if (info.missing.length) return { ok: false, error: describeMissing(host, info.missing) };
+  if (info.missing.length) return { ok: false, error: describeMissing(device, info.missing) };
 
   const localVersion = (await run("claude", ["--version"])).stdout.trim();
   if (info.version && localVersion && info.version !== localVersion) {
-    warn(`version skew — local ${localVersion}, ${host} ${info.version}`);
+    warn(`version skew — local ${localVersion}, ${device.name} ${info.version}`);
   }
 
-  const mk = await sshExec(host, `mkdir -p ${q(remoteDir)}`);
-  if (mk.code !== 0) return { ok: false, error: `cannot create ${remoteDir} on ${host}` };
+  const mk = await device.exec(`mkdir -p ${q(remoteDir)}`);
+  if (mk.code !== 0) return { ok: false, error: `cannot create ${remoteDir} on ${device.name}` };
 
-  await pushRuntime(host, info.home);
+  await pushRuntime(device, info.home);
 
   // The transcript, which is what makes this the same conversation.
   const stage = stageSession(configDir(), localDir, sessionId);
   const dest = `${info.cfg}/projects/${slug(remoteDir)}`;
-  const pushed = await pushDir(host, stage, dest);
+  const pushed = await device.pushDir(stage, dest);
   fs.rmSync(stage, { recursive: true, force: true });
   if (pushed.code !== 0) return { ok: false, error: `could not ship the transcript: ${pushed.stderr}` };
 
   const result = { ok: true, info, carried: null, departure: null };
 
   if (carry && (await isRepo(localDir))) {
+    // A device you have beamed to before already has the repo. A fresh cloud
+    // box does not, and a patch has nothing to apply against — so seed it from
+    // *this* machine's history rather than from a git host, which keeps the
+    // same-commit invariant intact and means the box never needs your GitHub
+    // credentials (or your code to have been pushed anywhere at all).
+    const seeded = await seedRepo({ device, localDir, remoteDir, home: info.home, onProgress: note });
+    if (seeded.seeded) note(`seeded ${path.basename(remoteDir)} @ ${seeded.head.slice(0, 7)}`);
+    if (seeded.error) {
+      result.carryRefused = seeded.error;
+      return result;
+    }
+
     const bundleDir = tmpDir("carry");
     const captured = await captureBundle(localDir, bundleDir);
     if (captured.ok && !captured.empty) {
-      const remoteBundle = `${info.home}/.ccteleport/carry`;
-      await sshExec(host, `rm -rf ${q(remoteBundle)}`);
-      const sent = await pushDir(host, bundleDir, remoteBundle);
+      const remoteBundle = `${info.home}/.beamup/carry`;
+      await device.exec(`rm -rf ${q(remoteBundle)}`);
+      const sent = await device.pushDir(bundleDir, remoteBundle);
       if (sent.code === 0) {
-        const applied = await sshExec(
-          host,
+        const applied = await device.exec(
           `cd ${q(remoteDir)} && node ${q(`${remoteRuntime(info.home)}/scripts/carry-apply.mjs`)} ${q(remoteDir)} ${q(remoteBundle)}`,
           { timeout: 60000 },
         );
@@ -124,22 +143,26 @@ export async function teleportOut({ host, remoteDir, localDir, sessionId, carry 
 }
 
 /** Bring the session — and any work done out there — back to this machine. */
-export async function teleportBack({ host, remoteDir, localDir, sessionId, home, cfg, departure }) {
+export async function beamBack({ device, remoteDir, localDir, sessionId, home, cfg, departure }) {
   const stage = tmpDir("return");
   const src = `${cfg}/projects/${slug(remoteDir)}`;
-  const script = [
-    `S=$(mktemp -d)`,
-    `cp -a ${q(`${src}/${sessionId}.jsonl`)} "$S"/ 2>/dev/null || true`,
-    `cp -a ${q(`${src}/${sessionId}.ccr-tip.json`)} "$S"/ 2>/dev/null || true`,
-    `[ -d ${q(`${src}/memory`)} ] && cp -a ${q(`${src}/memory`)} "$S"/ || true`,
-    `tar czf - -C "$S" .`,
-    `rm -rf "$S"`,
-  ].join("; ");
+  const remoteStage = `${home}/.beamup/return`;
 
-  const pulled = await run("bash", [
-    "-c",
-    `ssh -o ControlMaster=auto -o ControlPath=${q(path.join(stateDir(), "cm", "%C"))} -o ControlPersist=120 ${q(host)} ${q(`bash -c ${q(script)}`)} | tar xzf - -C ${q(stage)}`,
-  ]);
+  // Stage exactly this session's files on the far side, then pull that. Doing
+  // the selection over there keeps the transfer transport-neutral — it is the
+  // same two calls whether the bytes travel over ssh or a sandbox socket.
+  const staged = await device.exec(
+    [
+      `rm -rf ${q(remoteStage)}`,
+      `mkdir -p ${q(remoteStage)}`,
+      `cp -a ${q(`${src}/${sessionId}.jsonl`)} ${q(remoteStage)}/ 2>/dev/null || true`,
+      `cp -a ${q(`${src}/${sessionId}.ccr-tip.json`)} ${q(remoteStage)}/ 2>/dev/null || true`,
+      `[ -d ${q(`${src}/memory`)} ] && cp -a ${q(`${src}/memory`)} ${q(remoteStage)}/ || true`,
+    ].join("; "),
+  );
+
+  const pulled = staged.code === 0 ? await device.pullDir(remoteStage, stage) : staged;
+  await device.exec(`rm -rf ${q(remoteStage)}`);
 
   const result = { ok: pulled.code === 0, carried: null };
 
@@ -152,35 +175,34 @@ export async function teleportBack({ host, remoteDir, localDir, sessionId, home,
       fs.cpSync(from, to, { recursive: true, force: true });
     }
   } else {
-    result.error = pulled.stderr.trim() || "could not retrieve the transcript";
+    result.error = (pulled.stderr ?? "").trim() || "could not retrieve the transcript";
   }
   fs.rmSync(stage, { recursive: true, force: true });
 
   // Work done out there comes home too.
   if (await isRepo(localDir)) {
-    const remoteBundle = `${home}/.ccteleport/carry-back`;
-    const capture = await sshExec(
-      host,
+    const remoteBundle = `${home}/.beamup/carry-back`;
+    const capture = await device.exec(
       `node ${q(`${remoteRuntime(home)}/scripts/carry-capture.mjs`)} ${q(remoteDir)} ${q(remoteBundle)}`,
       { timeout: 60000 },
     );
     const summary = parseApply(capture.stdout);
     if (summary?.ok && !summary.empty) {
       const bundleDir = tmpDir("carry-back");
-      const got = await pullDir(host, remoteBundle, bundleDir);
+      const got = await device.pullDir(remoteBundle, bundleDir);
       if (got.code === 0) {
         const here = await fingerprint(localDir);
         if (departure?.fingerprint && here !== departure.fingerprint) {
           const keep = path.join(stateDir(), `incoming-${Date.now()}`);
           fs.cpSync(bundleDir, keep, { recursive: true });
-          result.carryRefused = `this directory changed while you were away — the work from ${host} is saved at ${keep}`;
+          result.carryRefused = `this directory changed while you were away — the work from ${device.name} is saved at ${keep}`;
         } else {
           const applied = await applyBundle(localDir, bundleDir, { replacing: departure ?? { untracked: [] } });
           if (applied.ok) result.carried = { files: applied.files, direction: "back" };
           else {
             const keep = path.join(stateDir(), `incoming-${Date.now()}`);
             fs.cpSync(bundleDir, keep, { recursive: true });
-            result.carryRefused = `${describeRefusal(applied)} — the work from ${host} is saved at ${keep}`;
+            result.carryRefused = `${describeRefusal(applied)} — the work from ${device.name} is saved at ${keep}`;
           }
         }
       }
@@ -191,8 +213,8 @@ export async function teleportBack({ host, remoteDir, localDir, sessionId, home,
   return result;
 }
 
-/** Moving between two directories on this machine is the same operation, minus ssh. */
-export async function teleportLocal({ fromDir, toDir, sessionId }) {
+/** Moving between two directories on this machine is the same operation, minus a transport. */
+export async function beamLocal({ fromDir, toDir, sessionId }) {
   const cfg = configDir();
   const stage = stageSession(cfg, fromDir, sessionId);
   const dest = projectDir(cfg, toDir);

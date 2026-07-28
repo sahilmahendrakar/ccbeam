@@ -13,7 +13,7 @@ export function configDir(env = process.env) {
  * [A-Za-z0-9] collapses to a dash, so `/tmp/cct.slug_test-x` becomes
  * `-tmp-cct-slug-test-x`.
  *
- * This is the one piece of Claude Code's internals ccteleport depends on. The
+ * This is the one piece of Claude Code's internals beamup depends on. The
  * reverse mapping is deliberately never attempted: slugs are lossy (a dash in
  * the original path is indistinguishable from a separator), so anywhere we need
  * a real path we read the `cwd` field recorded inside the transcript instead.
@@ -46,9 +46,9 @@ export function newestSession(cfg, dir) {
   return best?.id ?? null;
 }
 
-/** ccteleport's own state lives outside Claude Code's tree. */
+/** beamup's own state lives outside Claude Code's tree. */
 export function stateDir() {
-  return path.join(os.homedir(), ".ccteleport");
+  return path.join(os.homedir(), ".beamup");
 }
 
 export function readState() {
@@ -68,15 +68,15 @@ export function writeState(state) {
  * Remember where we've been, newest first. The picker's ordering and its
  * pre-selected folder both come from this.
  */
-export function recordVisit(machine, dir) {
+export function recordVisit(device, dir) {
   const state = readState();
   state.recents = [
-    { machine, dir, at: Date.now() },
-    ...(state.recents ?? []).filter((r) => !(r.machine === machine && r.dir === dir)),
+    { device, dir, at: Date.now() },
+    ...(state.recents ?? []).filter((r) => !(r.device === device && r.dir === dir)),
   ].slice(0, 100);
   writeState(state);
 }
 
-export function lastDirOn(machine) {
-  return readState().recents?.find((r) => r.machine === machine)?.dir ?? null;
+export function lastDirOn(device) {
+  return readState().recents?.find((r) => r.device === device)?.dir ?? null;
 }
