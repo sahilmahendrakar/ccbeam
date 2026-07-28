@@ -1,14 +1,14 @@
 /**
  * The conversations living on a device.
  *
- * `/beam cloud` means *this* conversation moves there — the session id is
+ * `/ccbeam:up cloud` means *this* conversation moves there — the session id is
  * preserved, which is the whole reason context survives. Picking up a
  * *different* conversation is a genuinely different act, so it gets a
- * different verb (`/beam cloud resume`) and its own list. Conflating the two
- * would let `/beam` silently abandon the conversation you were in.
+ * different verb (`/ccbeam:up cloud resume`) and its own list. Conflating the two
+ * would let `/ccbeam:up` silently abandon the conversation you were in.
  *
  * Sessions are read out of the device's own Claude Code state, the same way
- * folders are — there is no registry, and beamup records nothing about them.
+ * folders are — there is no registry, and ccbeam records nothing about them.
  */
 import { q } from "../exec.mjs";
 
@@ -71,7 +71,7 @@ export async function listSessions(device) {
 
 /**
  * Delete a session's transcript. The working folder is left alone — it may
- * hold work, and beamup does not delete anyone's files without being asked.
+ * hold work, and ccbeam does not delete anyone's files without being asked.
  */
 export async function removeSession(device, id) {
   if (!/^[A-Za-z0-9._-]+$/.test(id)) return { ok: false, error: `not a session id: ${id}` };

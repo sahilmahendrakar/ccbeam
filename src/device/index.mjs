@@ -43,7 +43,7 @@ import { SshDevice } from "./ssh.mjs";
 export async function getDevice(name) {
   if (name === LOCAL) throw new Error("local is not a remote device");
   if (name === CLOUD) {
-    // Loaded on demand so that installing beamup never pulls a cloud SDK for a
+    // Loaded on demand so that installing ccbeam never pulls a cloud SDK for a
     // feature you have not asked for.
     const { E2BDevice } = await import("./e2b.mjs");
     return new E2BDevice();

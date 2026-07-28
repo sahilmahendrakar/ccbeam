@@ -9,11 +9,11 @@
  *
  * Two rules this file exists to keep:
  *
- *   - It runs on **your** E2B account. beamup operates no infrastructure, holds
+ *   - It runs on **your** E2B account. ccbeam operates no infrastructure, holds
  *     no key and proxies nothing. Your code goes from your machine to your
  *     sandbox.
  *   - It cannot quietly run forever. Every sandbox is created with `autoPause`
- *     and a finite timeout, so even if beamup is killed -9 the box puts itself
+ *     and a finite timeout, so even if ccbeam is killed -9 the box puts itself
  *     to sleep instead of billing you until you notice.
  */
 import fs from "node:fs";
@@ -34,7 +34,7 @@ export const CLOUD_HOME = `/home/${CLOUD_USER}`;
  * not always source .bashrc, so every script we send says where to look rather
  * than hoping.
  */
-const PATH_PRELUDE = 'export PATH="$HOME/.npm-global/bin:$PATH"; [ -f "$HOME/.beamup/env" ] && . "$HOME/.beamup/env";';
+const PATH_PRELUDE = 'export PATH="$HOME/.npm-global/bin:$PATH"; [ -f "$HOME/.ccbeam/env" ] && . "$HOME/.ccbeam/env";';
 
 /**
  * Scratch space inside the box.
@@ -43,11 +43,11 @@ const PATH_PRELUDE = 'export PATH="$HOME/.npm-global/bin:$PATH"; [ -f "$HOME/.be
  * existing file there — the first write of a session succeeds and every one
  * after it fails with EACCES. Under the box's own home there is no such trap.
  */
-const SCRATCH = `${CLOUD_HOME}/.beamup/tmp`;
-const LAUNCH_FILE = `${CLOUD_HOME}/.beamup/launch.sh`;
+const SCRATCH = `${CLOUD_HOME}/.ccbeam/tmp`;
+const LAUNCH_FILE = `${CLOUD_HOME}/.ccbeam/launch.sh`;
 
 function tmpFile(tag) {
-  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), `beamup-${tag}-`)), "bundle.tar.gz");
+  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), `ccbeam-${tag}-`)), "bundle.tar.gz");
 }
 
 export class E2BDevice {
@@ -77,7 +77,7 @@ export class E2BDevice {
     if (this.sandbox) return { ok: true };
 
     const key = apiKey();
-    if (!key) return { ok: false, error: "no E2B key yet — run `beamup cloud` to set the cloud box up" };
+    if (!key) return { ok: false, error: "no E2B key yet — run `ccbeam cloud` to set the cloud box up" };
 
     const loaded = await this.sdk({ onProgress });
     if (!loaded.ok) return { ok: false, error: loaded.error };
@@ -96,12 +96,12 @@ export class E2BDevice {
         // everything installed on the old one is gone with it.
         return {
           ok: false,
-          error: `the cloud box (${stored.sandboxId}) is no longer there — run \`beamup cloud repair\` to make a new one. (${err?.message ?? err})`,
+          error: `the cloud box (${stored.sandboxId}) is no longer there — run \`ccbeam cloud repair\` to make a new one. (${err?.message ?? err})`,
         };
       }
     }
 
-    return { ok: false, error: "the cloud box is not set up yet — run `beamup cloud`" };
+    return { ok: false, error: "the cloud box is not set up yet — run `ccbeam cloud`" };
   }
 
   /** Create a brand-new sandbox. Only the setup flow calls this. */
@@ -120,7 +120,7 @@ export class E2BDevice {
         // rather than dies, so a crashed supervisor costs you nothing and
         // loses you nothing.
         autoPause: true,
-        metadata: { managedBy: "beamup" },
+        metadata: { managedBy: "ccbeam" },
       });
     } catch (err) {
       return { ok: false, error: describeE2BError(err) };
@@ -325,7 +325,7 @@ function shq(s) {
 export function describeE2BError(err) {
   const message = String(err?.message ?? err);
   if (/unauthor|authentication|api key/i.test(message)) {
-    return "E2B rejected that key — check it at https://e2b.dev/dashboard, then run `beamup cloud key`";
+    return "E2B rejected that key — check it at https://e2b.dev/dashboard, then run `ccbeam cloud key`";
   }
   if (/rate limit/i.test(message)) return "E2B is rate limiting this account right now — try again in a moment";
   return message;

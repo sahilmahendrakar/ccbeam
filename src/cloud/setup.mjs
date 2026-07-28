@@ -1,12 +1,12 @@
 /**
  * Standing up the cloud box, once.
  *
- * This is the only part of beamup with real setup, and it is deliberately the
+ * This is the only part of ccbeam with real setup, and it is deliberately the
  * only part: after this runs, `cloud` behaves exactly like `gpu-box` and you
  * never think about it again.
  *
  * The rule it exists to honour is the same one that governs every other device
- * — **beamup never carries your Claude credentials anywhere**. A machine you
+ * — **ccbeam never carries your Claude credentials anywhere**. A machine you
  * ssh to signs itself in with `claude auth login`; so does the cloud box, in
  * its own PTY, and the sign-in survives because a paused sandbox keeps its
  * whole filesystem. The alternative — copying ~/.claude/.credentials.json off
@@ -30,7 +30,7 @@ set -u
 export PATH="$HOME/.npm-global/bin:$PATH"
 
 if ! command -v node >/dev/null 2>&1; then
-  echo "beamup: no node in this image" >&2
+  echo "ccbeam: no node in this image" >&2
   exit 90
 fi
 
@@ -38,7 +38,7 @@ if ! command -v git >/dev/null 2>&1; then
   (sudo apt-get update -qq && sudo apt-get install -y -qq git) >/dev/null 2>&1 || true
 fi
 if ! command -v git >/dev/null 2>&1; then
-  echo "beamup: could not install git" >&2
+  echo "ccbeam: could not install git" >&2
   exit 91
 fi
 
@@ -46,7 +46,7 @@ if ! command -v claude >/dev/null 2>&1; then
   mkdir -p "$HOME/.npm-global"
   npm config set prefix "$HOME/.npm-global" >/dev/null 2>&1
   npm install -g @anthropic-ai/claude-code >/dev/null 2>&1 || {
-    echo "beamup: npm could not install Claude Code" >&2
+    echo "ccbeam: npm could not install Claude Code" >&2
     exit 92
   }
 fi
@@ -54,7 +54,7 @@ fi
 grep -q 'npm-global/bin' "$HOME/.bashrc" 2>/dev/null || \\
   echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> "$HOME/.bashrc"
 
-command -v claude >/dev/null 2>&1 || { echo "beamup: claude still not on PATH" >&2; exit 93; }
+command -v claude >/dev/null 2>&1 || { echo "ccbeam: claude still not on PATH" >&2; exit 93; }
 echo "provisioned $(claude --version 2>/dev/null | head -1)"
 `;
 
@@ -62,7 +62,7 @@ function describeProvisionFailure(code, stderr) {
   const last = (stderr || "").trim().split("\n").pop();
   switch (code) {
     case 90:
-      return "that E2B template has no Node — pick an image with Node 18+ (`beamup cloud template <id>`)";
+      return "that E2B template has no Node — pick an image with Node 18+ (`ccbeam cloud template <id>`)";
     case 91:
       return "could not install git in the box";
     case 92:
@@ -82,7 +82,7 @@ async function collectKey() {
     [
       "",
       `  ${bold("The cloud box runs on your own E2B account.")}`,
-      dim("  beamup operates no servers and holds no keys — your code goes from"),
+      dim("  ccbeam operates no servers and holds no keys — your code goes from"),
       dim("  this machine to your sandbox, with nothing in between."),
       "",
       dim("  Get a key at https://e2b.dev/dashboard"),
@@ -93,7 +93,7 @@ async function collectKey() {
   const key = await askSecret("E2B API key:");
   if (!key) return { ok: false, error: "no key given" };
   saveApiKey(key);
-  note("saved to ~/.beamup/config.json (mode 600)");
+  note("saved to ~/.ccbeam/config.json (mode 600)");
   return { ok: true };
 }
 
@@ -129,8 +129,8 @@ async function establishAuth(device) {
     if (!key) return { ok: false, error: "no key given" };
     // Written inside the box, not stored on this machine.
     const written = await device.exec(
-      `mkdir -p "$HOME/.beamup" && printf '%s\\n' 'export ANTHROPIC_API_KEY=${shellSingle(key)}' > "$HOME/.beamup/env" && chmod 600 "$HOME/.beamup/env" && ` +
-        `grep -q 'beamup/env' "$HOME/.bashrc" || echo '[ -f "$HOME/.beamup/env" ] && . "$HOME/.beamup/env"' >> "$HOME/.bashrc"`,
+      `mkdir -p "$HOME/.ccbeam" && printf '%s\\n' 'export ANTHROPIC_API_KEY=${shellSingle(key)}' > "$HOME/.ccbeam/env" && chmod 600 "$HOME/.ccbeam/env" && ` +
+        `grep -q 'ccbeam/env' "$HOME/.bashrc" || echo '[ -f "$HOME/.ccbeam/env" ] && . "$HOME/.ccbeam/env"' >> "$HOME/.bashrc"`,
     );
     if (written.code !== 0) return { ok: false, error: `could not store the key in the box: ${written.stderr}` };
     patchCloud({ auth: "apikey" });
@@ -154,7 +154,7 @@ async function establishAuth(device) {
     { timeout: 120000 },
   );
   if (verified.stdout.trim() !== "yes") {
-    return { ok: false, error: "the box still is not signed in — run `beamup cloud auth` to try again" };
+    return { ok: false, error: "the box still is not signed in — run `ccbeam cloud auth` to try again" };
   }
   patchCloud({ auth: "signin" });
   return { ok: true, mode: "signin" };
@@ -162,7 +162,7 @@ async function establishAuth(device) {
 
 /**
  * The whole first run. Idempotent: each step is skipped if it is already done,
- * so this doubles as `beamup cloud repair`.
+ * so this doubles as `ccbeam cloud repair`.
  */
 export async function setupCloud({ recreate = false } = {}) {
   const key = await collectKey();
@@ -198,7 +198,7 @@ export async function setupCloud({ recreate = false } = {}) {
   const auth = await establishAuth(device);
   if (!auth.ok) {
     warn(auth.error);
-    warn("the box is set up but cannot run Claude Code yet — `beamup cloud auth` when you're ready");
+    warn("the box is set up but cannot run Claude Code yet — `ccbeam cloud auth` when you're ready");
     const paused = await device.release();
     if (paused?.note) note(paused.note);
     return { ok: false, error: auth.error, partial: true };

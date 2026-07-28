@@ -1,10 +1,10 @@
 /**
  * Loading the E2B SDK, but only if you asked for a cloud box.
  *
- * `npm i -g beamup` must not drag a cloud provider's SDK onto your machine for
+ * `npm i -g ccbeam` must not drag a cloud provider's SDK onto your machine for
  * a feature you have not used — the core is provider-agnostic and should stay
  * cheap to install. So `e2b` is not a dependency of this package at all. It is
- * fetched into ~/.beamup/deps the first time you set the cloud box up, and
+ * fetched into ~/.ccbeam/deps the first time you set the cloud box up, and
  * loaded from there.
  *
  * The same mechanism is what a second provider (Fly, Modal, a plain VM) would
@@ -66,11 +66,11 @@ export async function ensureE2B({ onProgress = () => {} } = {}) {
   if (!fs.existsSync(manifest)) {
     fs.writeFileSync(
       manifest,
-      JSON.stringify({ name: "beamup-deps", private: true, description: "Optional provider SDKs, fetched on demand." }, null, 2) + "\n",
+      JSON.stringify({ name: "ccbeam-deps", private: true, description: "Optional provider SDKs, fetched on demand." }, null, 2) + "\n",
     );
   }
 
-  onProgress(`fetching the ${PACKAGE} SDK (once, into ~/.beamup/deps)`);
+  onProgress(`fetching the ${PACKAGE} SDK (once, into ~/.ccbeam/deps)`);
   const installed = await run(
     "npm",
     ["install", "--prefix", dir, "--no-audit", "--no-fund", "--loglevel", "error", `${PACKAGE}@${VERSION_RANGE}`],

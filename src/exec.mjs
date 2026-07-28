@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 
 /**
  * Claude Code marks its own subprocesses so nested sessions don't write
- * transcripts. beamup is a supervisor, not a nested agent — if we inherit
+ * transcripts. ccbeam is a supervisor, not a nested agent — if we inherit
  * these, the session we launch silently stops saving and there is nothing to
  * beam. Scrubbed from every child we start.
  */

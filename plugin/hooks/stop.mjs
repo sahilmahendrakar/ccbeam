@@ -11,7 +11,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const file = process.env.BEAMUP_REQ || path.join(os.homedir(), ".beamup", "request.json");
+const file = process.env.CCBEAM_REQ || path.join(os.homedir(), ".ccbeam", "request.json");
 
 if (fs.existsSync(file)) {
   const pid = Number(process.env.CLAUDE_PID);

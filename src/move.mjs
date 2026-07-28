@@ -10,12 +10,12 @@ import { note, warn } from "./ui.mjs";
 const PKG_ROOT = path.resolve(new URL("..", import.meta.url).pathname);
 
 export const localPluginDir = () => path.join(PKG_ROOT, "plugin");
-export const remoteRuntime = (home) => `${home}/.beamup/runtime`;
+export const remoteRuntime = (home) => `${home}/.ccbeam/runtime`;
 export const remotePlugin = (home) => `${remoteRuntime(home)}/plugin`;
-export const remoteRequestFile = (home) => `${home}/.beamup/request.json`;
+export const remoteRequestFile = (home) => `${home}/.ccbeam/request.json`;
 
 function tmpDir(tag) {
-  return fs.mkdtempSync(path.join(os.tmpdir(), `beamup-${tag}-`));
+  return fs.mkdtempSync(path.join(os.tmpdir(), `ccbeam-${tag}-`));
 }
 
 /**
@@ -62,12 +62,12 @@ export function describeMissing(device, missing) {
   const lines = [`${device.name} is missing: ${missing.join(", ")}`];
   if (missing.includes("claude")) {
     if (device.kind === "cloud") {
-      lines.push("  the cloud box was not provisioned — run:  beamup cloud repair");
+      lines.push("  the cloud box was not provisioned — run:  ccbeam cloud repair");
     } else {
       lines.push(`  install Claude Code there, then sign in:  ssh ${device.name} -t 'claude auth login'`);
     }
   }
-  if (missing.includes("node")) lines.push("  beamup's plugin needs Node 18+ on that device");
+  if (missing.includes("node")) lines.push("  ccbeam's plugin needs Node 18+ on that device");
   return lines.join("\n");
 }
 
@@ -119,7 +119,7 @@ export async function beamOut({ device, remoteDir, localDir, sessionId, carry = 
     const bundleDir = tmpDir("carry");
     const captured = await captureBundle(localDir, bundleDir);
     if (captured.ok && !captured.empty) {
-      const remoteBundle = `${info.home}/.beamup/carry`;
+      const remoteBundle = `${info.home}/.ccbeam/carry`;
       await device.exec(`rm -rf ${q(remoteBundle)}`);
       const sent = await device.pushDir(bundleDir, remoteBundle);
       if (sent.code === 0) {
@@ -178,7 +178,7 @@ export async function beamAdopt({ device, sessionId, remoteDir }) {
 export async function beamBack({ device, remoteDir, localDir, sessionId, home, cfg, departure }) {
   const stage = tmpDir("return");
   const src = `${cfg}/projects/${slug(remoteDir)}`;
-  const remoteStage = `${home}/.beamup/return`;
+  const remoteStage = `${home}/.ccbeam/return`;
 
   // Stage exactly this session's files on the far side, then pull that. Doing
   // the selection over there keeps the transfer transport-neutral — it is the
@@ -213,7 +213,7 @@ export async function beamBack({ device, remoteDir, localDir, sessionId, home, c
 
   // Work done out there comes home too.
   if (await isRepo(localDir)) {
-    const remoteBundle = `${home}/.beamup/carry-back`;
+    const remoteBundle = `${home}/.ccbeam/carry-back`;
     const capture = await device.exec(
       `node ${q(`${remoteRuntime(home)}/scripts/carry-capture.mjs`)} ${q(remoteDir)} ${q(remoteBundle)}`,
       { timeout: 60000 },

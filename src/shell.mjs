@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 /**
- * Shell integration: make `claude` mean `beamup`.
+ * Shell integration: make `claude` mean `ccbeam`.
  *
  * The supervisor has to own the terminal — a plugin cannot perform the swap,
  * because hooks and MCP servers die with the session they belong to. But it
@@ -14,8 +14,8 @@ import path from "node:path";
  * here is delimited, idempotent, and removable with one command.
  */
 
-export const START = "# >>> beamup >>>";
-export const END = "# <<< beamup <<<";
+export const START = "# >>> ccbeam >>>";
+export const END = "# <<< ccbeam <<<";
 
 export const SHELLS = ["bash", "zsh", "fish"];
 
@@ -40,12 +40,12 @@ export function rcFileFor(shell, env = process.env, home = os.homedir()) {
 }
 
 export function blockFor(shell) {
-  const note = "# Makes `claude` beam-capable. Remove with: beamup uninstall-shell";
+  const note = "# Makes `claude` beam-capable. Remove with: ccbeam uninstall-shell";
   if (shell === "fish") {
-    return [START, note, "function claude", "    command beamup $argv", "end", END].join("\n");
+    return [START, note, "function claude", "    command ccbeam $argv", "end", END].join("\n");
   }
   // `command` so this function never calls itself.
-  return [START, note, 'claude() { command beamup "$@"; }', END].join("\n");
+  return [START, note, 'claude() { command ccbeam "$@"; }', END].join("\n");
 }
 
 export function isInstalled(text) {
@@ -88,7 +88,7 @@ export function install({ shell, rcFile }) {
 
   let backup = null;
   if (existed && text.trim()) {
-    backup = `${file}.beamup.bak`;
+    backup = `${file}.ccbeam.bak`;
     if (!fs.existsSync(backup)) fs.copyFileSync(file, backup);
   }
 

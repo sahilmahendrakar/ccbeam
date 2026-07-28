@@ -7,7 +7,7 @@
  * Part B drives the ssh machinery against a real sshd, checking that the
  * transcript and uncommitted work land where they should on the far side.
  *
- * Part B needs a reachable host; set BEAMUP_HOST (default: beamup-localhost).
+ * Part B needs a reachable host; set CCBEAM_HOST (default: ccbeam-localhost).
  */
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -19,11 +19,11 @@ import { configDir, projectDir, slug } from "../src/paths.mjs";
 import { checkDevice, beamBack, beamOut } from "../src/move.mjs";
 import { SshDevice } from "../src/device/ssh.mjs";
 
-const HOST = process.env.BEAMUP_HOST || "beamup-localhost";
+const HOST = process.env.CCBEAM_HOST || "ccbeam-localhost";
 /** Part B drives a real ssh device through the same seam the supervisor uses. */
 const device = new SshDevice(HOST);
-const BIN = path.resolve(new URL("../bin/beamup.mjs", import.meta.url).pathname);
-const tmp = (tag) => fs.mkdtempSync(path.join(os.tmpdir(), `beamup-e2e-${tag}-`));
+const BIN = path.resolve(new URL("../bin/ccbeam.mjs", import.meta.url).pathname);
+const tmp = (tag) => fs.mkdtempSync(path.join(os.tmpdir(), `ccbeam-e2e-${tag}-`));
 
 let passed = 0;
 const tests = [];
@@ -45,7 +45,7 @@ function supervise(cwd, prompts, timeout = 300000) {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [BIN], {
       cwd,
-      env: cleanEnv({ BEAMUP_TEST_PROMPTS: JSON.stringify(prompts) }),
+      env: cleanEnv({ CCBEAM_TEST_PROMPTS: JSON.stringify(prompts) }),
       stdio: ["ignore", "pipe", "pipe"],
     });
     let out = "";
@@ -67,7 +67,7 @@ test("A1: a conversation survives a move to another folder", async () => {
   const codeword = "TANGERINE";
 
   const { out } = await supervise(from, [
-    `The codeword is ${codeword}. Now call the mcp__beamup__beam tool with target "local:${to}".`,
+    `The codeword is ${codeword}. Now call the mcp__ccbeam__beam tool with target "local:${to}".`,
     "What was the codeword mentioned earlier in this conversation? Reply with only that word.",
   ]);
 
@@ -77,13 +77,13 @@ test("A1: a conversation survives a move to another folder", async () => {
   assert.equal(landed.length, 1, "exactly one session should have landed in the destination");
 });
 
-test("A2: the /beam slash command drives a real move", async () => {
+test("A2: the /ccbeam:up slash command drives a real move", async () => {
   const from = tmp("cmd-from");
   const to = tmp("cmd-to");
 
-  // Plugin commands are namespaced. Interactively `/beam` resolves when
+  // Plugin commands are namespaced. Interactively `/ccbeam:up` resolves when
   // unambiguous; in print mode the full form is required.
-  const { out } = await supervise(from, [`/beamup:beam local:${to}`, "Reply with only the word ARRIVED."]);
+  const { out } = await supervise(from, [`/ccbeam:up local:${to}`, "Reply with only the word ARRIVED."]);
 
   assert.match(out, /ARRIVED/, `the session did not run in the destination.\n${out}`);
   assert.ok(
@@ -175,7 +175,7 @@ test("B3: returning brings the transcript and the work back", async () => {
 
 test("B4: a conversation survives a round trip through the supervisor", async () => {
   // The full loop: supervisor -> beam out over ssh (seeding a repo the device
-  // has never seen) -> run there -> /beam home -> carry the work back.
+  // has never seen) -> run there -> /ccbeam:up home -> carry the work back.
   const local = await makeRepo(tmp("trip-local"));
   const remote = path.join(tmp("trip-remote"), "seeded");
   const codeword = "MARMALADE";
@@ -183,8 +183,8 @@ test("B4: a conversation survives a round trip through the supervisor", async ()
   fs.writeFileSync(path.join(local, "tracked.txt"), "edited before leaving\n");
 
   const { out } = await supervise(local, [
-    `The codeword is ${codeword}. Now call the mcp__beamup__beam tool with target "${HOST}:${remote}".`,
-    `Create a file called made-remotely.txt containing the word ${codeword}, then call the mcp__beamup__beam tool with target "home".`,
+    `The codeword is ${codeword}. Now call the mcp__ccbeam__beam tool with target "${HOST}:${remote}".`,
+    `Create a file called made-remotely.txt containing the word ${codeword}, then call the mcp__ccbeam__beam tool with target "home".`,
     "Reply with only the word RETURNED.",
   ]);
 
@@ -207,7 +207,7 @@ test("B4: a conversation survives a round trip through the supervisor", async ()
 });
 
 // ---------------------------------------------------------------- Part C ----
-// The cloud box. Skipped unless one is already set up (`beamup cloud`), because
+// The cloud box. Skipped unless one is already set up (`ccbeam cloud`), because
 // these tests start a metered sandbox. They always pause it again, including on
 // failure — a test suite that leaves a box running would be worse than no tests.
 
@@ -290,7 +290,7 @@ test("C3: the launch command Claude Code is given actually starts over there", a
     const { remotePlugin } = await import("../src/move.mjs");
     const plugin = remotePlugin(info.home);
     const present = await cloud.exec(`test -f ${JSON.stringify(`${plugin}/.claude-plugin/plugin.json`)} && echo yes`);
-    assert.equal(present.stdout.trim(), "yes", "the beamup plugin should have been shipped to the box");
+    assert.equal(present.stdout.trim(), "yes", "the ccbeam plugin should have been shipped to the box");
     const runs = await cloud.exec(`command claude --plugin-dir ${JSON.stringify(plugin)} --version`);
     assert.match(runs.stdout, /Claude Code/, `claude did not run with our flags: ${runs.stderr}`);
   });
@@ -345,7 +345,7 @@ test("C4: a conversation living in the box can be listed, resumed and deleted", 
 // reporting failures that are really a missing test fixture.
 const reachable = (await checkDevice(device)).ok;
 if (!reachable) {
-  process.stdout.write(`  ⚠ ${HOST} unreachable — skipping the ssh tests (set BEAMUP_HOST, see README)\n`);
+  process.stdout.write(`  ⚠ ${HOST} unreachable — skipping the ssh tests (set CCBEAM_HOST, see README)\n`);
 }
 
 const only = process.argv[2];

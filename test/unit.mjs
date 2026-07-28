@@ -15,7 +15,7 @@ let passed = 0;
 const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
 
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "beamup-unit-"));
+const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), "ccbeam-unit-"));
 
 test("slug matches Claude Code's directory naming", () => {
   // Verified against real Claude Code output.
@@ -34,7 +34,7 @@ test("parseTarget handles every form the user can type", () => {
 });
 
 test("`resume` is a separate verb, not a way of spelling `beam`", () => {
-  // The distinction that keeps /beam from ever abandoning your conversation.
+  // The distinction that keeps /ccbeam:up from ever abandoning your conversation.
   assert.deepEqual(parseTarget("cloud resume"), { device: "cloud", dir: null, home: false, resume: true });
   assert.deepEqual(parseTarget("cloud  RESUME"), { device: "cloud", dir: null, home: false, resume: true });
   assert.deepEqual(parseTarget("gpu-box resume"), { device: "gpu-box", dir: null, home: false, resume: true });
@@ -160,7 +160,7 @@ test("shell integration installs, is idempotent, and removes cleanly", async () 
   const first = installShell({ shell: "zsh", rcFile: rc });
   assert.equal(first.action, "installed");
   assert.equal(fs.existsSync(first.backup), true, "should back the file up before editing");
-  assert.match(fs.readFileSync(rc, "utf8"), /claude\(\) \{ command beamup "\$@"; \}/);
+  assert.match(fs.readFileSync(rc, "utf8"), /claude\(\) \{ command ccbeam "\$@"; \}/);
 
   const second = installShell({ shell: "zsh", rcFile: rc });
   assert.equal(second.action, "already", "installing twice must not duplicate the block");
@@ -174,7 +174,7 @@ test("shell integration writes a valid fish function", () => {
   const rc = path.join(tmp(), "config.fish");
   installShell({ shell: "fish", rcFile: rc });
   const text = fs.readFileSync(rc, "utf8");
-  assert.match(text, /function claude\n {4}command beamup \$argv\nend/);
+  assert.match(text, /function claude\n {4}command ccbeam \$argv\nend/);
   assert.equal(uninstallShell({ shell: "fish", rcFile: rc }).action, "removed");
 });
 
@@ -190,7 +190,7 @@ test("shell integration creates a missing rc file", () => {
   const result = installShell({ shell: "bash", rcFile: rc });
   assert.equal(result.action, "installed");
   assert.equal(result.backup, null, "nothing to back up when the file did not exist");
-  assert.match(fs.readFileSync(rc, "utf8"), /beamup/);
+  assert.match(fs.readFileSync(rc, "utf8"), /ccbeam/);
 });
 
 test("rc file location respects ZDOTDIR and XDG_CONFIG_HOME", () => {
@@ -322,6 +322,102 @@ test("the device list always offers cloud, and ssh config cannot shadow it", asy
   } finally {
     process.env.HOME = realHome;
   }
+});
+
+/**
+ * Drive the prompts with a stand-in terminal.
+ *
+ * These exist because the interactive path shipped broken: every prompt used
+ * `node:readline`'s callback-style `question()`, which returns undefined, so
+ * awaiting it produced undefined and the first `.trim()` threw. Nothing caught
+ * it because the only automated coverage ran with stdin closed, where each
+ * prompt returns its default before touching readline. A fake tty closes that
+ * hole without needing a real one.
+ */
+async function withFakeTty(script, keystrokes) {
+  const { PassThrough } = await import("node:stream");
+  const stdin = new PassThrough();
+  stdin.isTTY = true;
+  stdin.setRawMode = () => stdin;
+
+  let out = "";
+  const stdout = new PassThrough();
+  stdout.isTTY = true;
+  stdout.columns = 80;
+  stdout.rows = 24;
+  stdout.on("data", (d) => (out += d));
+
+  const realIn = Object.getOwnPropertyDescriptor(process, "stdin");
+  const realOut = Object.getOwnPropertyDescriptor(process, "stdout");
+  Object.defineProperty(process, "stdin", { value: stdin, configurable: true });
+  Object.defineProperty(process, "stdout", { value: stdout, configurable: true });
+  try {
+    const running = script();
+    for (const keys of keystrokes) {
+      await new Promise((r) => setTimeout(r, 15));
+      stdin.write(keys);
+    }
+    return { value: await running, out };
+  } finally {
+    Object.defineProperty(process, "stdin", realIn);
+    Object.defineProperty(process, "stdout", realOut);
+  }
+}
+
+test("prompts actually return what was typed at a terminal", async () => {
+  const { ask, confirm } = await import("../src/prompt.mjs");
+
+  const asked = await withFakeTty(() => ask("name?"), ["sahil\n"]);
+  assert.equal(asked.value, "sahil", "ask must resolve to the answer, not undefined");
+
+  const blank = await withFakeTty(() => ask("name?", { default: "nobody" }), ["\n"]);
+  assert.equal(blank.value, "nobody", "an empty answer should fall back to the default");
+
+  const yes = await withFakeTty(() => confirm("sure?", { default: false }), ["y\n"]);
+  assert.equal(yes.value, true);
+  const no = await withFakeTty(() => confirm("sure?", { default: false }), ["\n"]);
+  assert.equal(no.value, false);
+});
+
+test("a typed secret comes back whole and never appears on screen", async () => {
+  const { askSecret } = await import("../src/prompt.mjs");
+  const key = "e2b_0123456789abcdef0123456789abcdef01234567";
+
+  // Typed one character at a time, and pasted in one chunk — both must work.
+  const typed = await withFakeTty(() => askSecret("E2B API key:"), [...key.split(""), "\n"]);
+  assert.equal(typed.value, key);
+  assert.equal(typed.out.includes(key), false, "the key must never be echoed");
+
+  const pasted = await withFakeTty(() => askSecret("E2B API key:"), [`${key}\n`]);
+  assert.equal(pasted.value, key, "a pasted key arrives as one chunk and must survive it");
+  assert.equal(pasted.out.includes(key), false, "the key must never be echoed");
+
+  const backspaced = await withFakeTty(() => askSecret("key:"), ["abcX", "", "d\n"]);
+  assert.equal(backspaced.value, "abcd", "backspace should delete a character");
+
+  const cancelled = await withFakeTty(() => askSecret("key:"), ["abc", ""]);
+  assert.equal(cancelled.value, "", "ctrl-c should give up rather than hang");
+});
+
+test("a menu resolves, and does not spin when input ends", async () => {
+  const { choose } = await import("../src/prompt.mjs");
+  const options = [{ label: "one" }, { label: "two" }];
+
+  const picked = await withFakeTty(() => choose("pick", options), ["2\n"]);
+  assert.equal(picked.value.label, "two");
+
+  // Junk, then a real answer: it should re-ask rather than accept nonsense.
+  const retried = await withFakeTty(() => choose("pick", options), ["9\n", "1\n"]);
+  assert.equal(retried.value.label, "one");
+
+  // The hang this caught: input ending mid-menu must settle on the default,
+  // not loop forever asking a terminal that is no longer there.
+  const ended = await withFakeTty(async () => {
+    const p = choose("pick", options, { default: 1 });
+    setTimeout(() => process.stdin.end(), 40);
+    return p;
+  }, []);
+  assert.equal(ended.value.label, "two");
 });
 
 for (const [name, fn] of tests) {

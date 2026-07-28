@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * beamup — move a Claude Code session between devices.
+ * ccbeam — move a Claude Code session between devices.
  *
  * This is a supervisor, not a client. It launches the real `claude` and hands
  * it the terminal; when a session asks to move, it ships the transcript and any
@@ -40,34 +40,34 @@ import { SHELLS, detectShell, install as installShell, uninstall as uninstallShe
 import { banner, bold, dim, fail, green, note, relTime, tilde, warn, yellow } from "../src/ui.mjs";
 
 const HELP = `
-${bold("beamup")} — move a Claude Code session between devices
+${bold("ccbeam")} — move a Claude Code session between devices
 
-  beamup [claude options...]     start a session you can beam out of
-  beamup devices                 list devices and what they are doing
-  beamup doctor [device]         check whether a device is ready
-  beamup cloud [key|auth|repair|destroy]
+  ccbeam [claude options...]     start a session you can beam out of
+  ccbeam devices                 list devices and what they are doing
+  ccbeam doctor [device]         check whether a device is ready
+  ccbeam cloud [key|auth|repair|destroy]
                                  set up or manage the cloud box
-  beamup cloud sessions          list conversations living on the cloud box
-  beamup cloud resume            pick one up, starting a session here
-  beamup cloud rm <id>           delete one
-  beamup install-shell           make \`claude\` beam-capable
-  beamup uninstall-shell         undo that
+  ccbeam cloud sessions          list conversations living on the cloud box
+  ccbeam cloud resume            pick one up, starting a session here
+  ccbeam cloud rm <id>           delete one
+  ccbeam install-shell           make \`claude\` beam-capable
+  ccbeam uninstall-shell         undo that
 
 Inside the session:
-  /beam                          pick a device, then a folder
-  /beam gpu-box[:~/src]          go straight there
-  /beam cloud                    take this conversation to your cloud box
-  /beam cloud resume             pick up a conversation already living there
-  /beam home                     return to where this session started
+  /ccbeam:up                     pick a device, then a folder
+  /ccbeam:up gpu-box[:~/src]     go straight there
+  /ccbeam:up cloud               take this conversation to your cloud box
+  /ccbeam:up cloud resume        pick up a conversation already living there
+  /ccbeam:up home                return to where this session started
 
 Devices come from your ~/.ssh/config — there is nothing to install or run on
 the far side beyond Claude Code, node and git. \`cloud\` is a sandbox on your
-own E2B account; beamup runs no infrastructure and holds no keys.
+own E2B account; ccbeam runs no infrastructure and holds no keys.
 `;
 
 // Test-only: drives each leg with `claude -p <prompt>` instead of an
 // interactive session, so the whole move can be exercised without a terminal.
-const TEST_PROMPTS = process.env.BEAMUP_TEST_PROMPTS ? JSON.parse(process.env.BEAMUP_TEST_PROMPTS) : null;
+const TEST_PROMPTS = process.env.CCBEAM_TEST_PROMPTS ? JSON.parse(process.env.CCBEAM_TEST_PROMPTS) : null;
 let leg = 0;
 
 async function main() {
@@ -110,7 +110,7 @@ async function main() {
   }
 
   try {
-    // `beamup cloud resume` opens on the cloud box rather than here.
+    // `ccbeam cloud resume` opens on the cloud box rather than here.
     if (resumingCloud) {
       const dest = await pickSessionOn(CLOUD, cur);
       if (!dest) {
@@ -183,7 +183,7 @@ function launchLocal(cur, userArgs, bringsOwnSession, reqFile) {
   }
   if (TEST_PROMPTS) args.push("-p", TEST_PROMPTS[leg++] ?? "ok", "--permission-mode", "bypassPermissions");
 
-  return runInherit("claude", args, { cwd: cur.dir, env: { BEAMUP_REQ: reqFile } });
+  return runInherit("claude", args, { cwd: cur.dir, env: { CCBEAM_REQ: reqFile } });
 }
 
 async function launchRemote(cur, reqFile) {
@@ -192,7 +192,7 @@ async function launchRemote(cur, reqFile) {
     // `command` so a shell function or alias named `claude` on the far device
     // resolves to the real binary. Without it, shell integration on both ends
     // would make the remote launch recurse into another supervisor.
-    `BEAMUP_REQ=${sh(reqFile)} command claude --plugin-dir ${sh(remotePlugin(cur.home))} --resume ${sh(cur.sessionId)}`,
+    `CCBEAM_REQ=${sh(reqFile)} command claude --plugin-dir ${sh(remotePlugin(cur.home))} --resume ${sh(cur.sessionId)}`,
   ];
   if (TEST_PROMPTS) {
     parts[1] += ` -p ${sh(TEST_PROMPTS[leg++] ?? "ok")} --permission-mode bypassPermissions`;
@@ -248,7 +248,7 @@ async function resolveDestination(req, cur, origin) {
       // A cloud box on its first visit has no history to offer, and exactly one
       // sensible answer — the repo you are standing in. Asking would be theatre.
       if (device === CLOUD) return { device, dir: cloudWorkDir(cur.dir) };
-      fail(`no folders known on ${device} — pass one explicitly, e.g. /beam ${device}:~/src`);
+      fail(`no folders known on ${device} — pass one explicitly, e.g. /ccbeam:up ${device}:~/src`);
       return null;
     }
     const last = lastDirOn(device);
@@ -292,7 +292,7 @@ async function releasePendingWake() {
 }
 
 /**
- * The session picker behind `/beam <device> resume`.
+ * The session picker behind `/ccbeam:up <device> resume`.
  *
  * Deliberately a separate screen from the folder picker, reached by a separate
  * verb, because it does a separate thing: it abandons the conversation you are
@@ -324,7 +324,7 @@ async function pickSessionOn(name, cur) {
   for (;;) {
     const rows = await listSessions(handle);
     if (!rows.length) {
-      fail(`no conversations on ${name} yet — \`/beam ${name}\` takes this one there`);
+      fail(`no conversations on ${name} yet — \`/ccbeam:up ${name}\` takes this one there`);
       await releasePendingWake();
       return null;
     }
@@ -528,7 +528,7 @@ async function performMove(cur, dest, { departure }) {
   };
 }
 
-/** `beamup cloud [key|auth|repair|destroy]` */
+/** `ccbeam cloud [key|auth|repair|destroy]` */
 async function cloudCommand(args) {
   const sub = args[0];
 
@@ -539,7 +539,7 @@ async function cloudCommand(args) {
       return 1;
     }
     saveApiKey(key);
-    process.stdout.write(`  ${green("✓")} saved to ~/.beamup/config.json\n`);
+    process.stdout.write(`  ${green("✓")} saved to ~/.ccbeam/config.json\n`);
     return 0;
   }
 
@@ -581,7 +581,7 @@ async function cloudCommand(args) {
       if (sub === "rm") {
         const id = args[1];
         if (!id) {
-          fail("which one? `beamup cloud sessions` lists them");
+          fail("which one? `ccbeam cloud sessions` lists them");
           return 1;
         }
         const removed = await removeSession(handle, id);
@@ -609,7 +609,7 @@ async function cloudCommand(args) {
           )}\n`,
         );
       }
-      note("resume one with `beamup cloud resume`, delete with `beamup cloud rm <id>`");
+      note("resume one with `ccbeam cloud resume`, delete with `ccbeam cloud rm <id>`");
       return 0;
     } finally {
       const released = await handle.release().catch(() => null);
@@ -626,12 +626,12 @@ async function cloudCommand(args) {
     const released = await result.device.release();
     if (released?.note) note(released.note);
   }
-  process.stdout.write(`\n  ${green("ready")} — \`/beam cloud\` from any session\n`);
+  process.stdout.write(`\n  ${green("ready")} — \`/ccbeam:up cloud\` from any session\n`);
   return 0;
 }
 
 /**
- * `beamup install-shell` — so the command you type stays `claude`.
+ * `ccbeam install-shell` — so the command you type stays `claude`.
  * The supervisor still runs; it just stops being something you have to remember.
  */
 function shellIntegration(argv, adding) {
@@ -642,7 +642,7 @@ function shellIntegration(argv, adding) {
   const shell = flag("--shell") || detectShell();
   if (!shell) {
     fail(`could not tell which shell you use (SHELL=${process.env.SHELL || "unset"})`);
-    note(`pass one explicitly:  beamup ${adding ? "install-shell" : "uninstall-shell"} --shell zsh`);
+    note(`pass one explicitly:  ccbeam ${adding ? "install-shell" : "uninstall-shell"} --shell zsh`);
     note(`supported: ${SHELLS.join(", ")}`);
     return 1;
   }

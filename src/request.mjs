@@ -6,16 +6,16 @@ import { stateDir } from "./paths.mjs";
  * How the session tells the supervisor to move.
  *
  * A slash command cannot take over the terminal — tool output is captured, not
- * written to the tty — so `/beam` does not move anything itself. It drops a
+ * written to the tty — so `/ccbeam:up` does not move anything itself. It drops a
  * request file; the plugin's Stop hook ends the session at the turn boundary
  * (so the transcript is complete on disk); the supervisor, which has been
  * waiting on the child all along, reads the file and performs the move.
  *
- * The path travels in BEAMUP_REQ so the plugin never has to guess which
+ * The path travels in CCBEAM_REQ so the plugin never has to guess which
  * session it belongs to.
  */
 export function requestPath(env = process.env) {
-  return env.BEAMUP_REQ || path.join(stateDir(), "request.json");
+  return env.CCBEAM_REQ || path.join(stateDir(), "request.json");
 }
 
 export function writeRequest(req, file = requestPath()) {
@@ -40,8 +40,8 @@ export function clearRequest(file = requestPath()) {
 }
 
 /**
- * `/beam gpu-box:~/src`, `/beam gpu-box`, `/beam cloud`, `/beam home` and a
- * bare `/beam` are all valid; anything absent is chosen in the picker.
+ * `/ccbeam:up gpu-box:~/src`, `/ccbeam:up gpu-box`, `/ccbeam:up cloud`, `/ccbeam:up home` and a
+ * bare `/ccbeam:up` are all valid; anything absent is chosen in the picker.
  *
  * `home` is reserved: it means the device and folder this session started in,
  * however many hops ago. A device you happen to have named `home` in your ssh
@@ -56,10 +56,10 @@ export function parseTarget(text) {
 
   /**
    * `<device> resume` is a different act from `<device>`, and deliberately a
-   * different verb. `/beam cloud` moves *this* conversation there, keeping its
-   * session id — which is why context survives. `/beam cloud resume` picks up a
+   * different verb. `/ccbeam:up cloud` moves *this* conversation there, keeping its
+   * session id — which is why context survives. `/ccbeam:up cloud resume` picks up a
    * conversation already living there, abandoning the current one. Overloading
-   * the first to sometimes mean the second would let `/beam` lose your place.
+   * the first to sometimes mean the second would let `/ccbeam:up` lose your place.
    */
   let resume = false;
   const trailing = arg.match(/\s+(\S+)$/);

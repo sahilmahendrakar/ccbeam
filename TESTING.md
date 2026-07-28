@@ -1,7 +1,7 @@
-# beamup — test brief
+# ccbeam — test brief
 
-You are testing `beamup`, a tool that moves a Claude Code session between
-machines. It launches the real `claude`, and on `/beam` ships the session
+You are testing `ccbeam`, a tool that moves a Claude Code session between
+machines. It launches the real `claude`, and on `/ccbeam:up` ships the session
 transcript and uncommitted git work over SSH and resumes the **same session** on
 another machine attached to the same terminal.
 
@@ -12,7 +12,7 @@ Report what actually happened, including anything that looked wrong but passed.
 ## Before you start — read this
 
 - **Never run the carry tests in a repository whose uncommitted work matters.**
-  `/beam` moves your dirty diff to another machine and `/beam home` moves it home,
+  `/ccbeam:up` moves your dirty diff to another machine and `/ccbeam:up home` moves it home,
   replacing the working tree in the process. Use throwaway repos created by the
   steps below.
 - `install-shell` edits `~/.bashrc` / `~/.zshrc` / `config.fish`. It backs the
@@ -23,13 +23,13 @@ Report what actually happened, including anything that looked wrong but passed.
 ## Setup
 
 ```bash
-git clone https://github.com/sahilmahendrakar/beamup   # private repo
-cd beamup
+git clone https://github.com/sahilmahendrakar/ccbeam   # private repo
+cd ccbeam
 node --version        # must be >= 18
 ```
 
-It is not on npm. Either run it directly as `node /path/to/beamup/bin/beamup.mjs`
-or `npm link` to get a real `beamup` on PATH. Use one form consistently and
+It is not on npm. Either run it directly as `node /path/to/ccbeam/bin/ccbeam.mjs`
+or `npm link` to get a real `ccbeam` on PATH. Use one form consistently and
 say which you used.
 
 ## What you need
@@ -38,13 +38,13 @@ say which you used.
 - **Machine B** — any machine you can `ssh` into, with Claude Code **signed in
   there**, plus `node` 18+ and `git`.
 
-To check B: `beamup doctor <host>` should end in `ready`.
+To check B: `ccbeam doctor <host>` should end in `ready`.
 
 **If B is a server you ssh into:** Claude Code's config location comes from
 `CLAUDE_CONFIG_DIR`, which is usually **not set for non-interactive ssh
 sessions** even if your shell profile sets it. So B may be authenticated under a
 custom config dir interactively but unauthenticated under `$HOME/.claude`, which
-is what beamup will use. Verify with:
+is what ccbeam will use. Verify with:
 
 ```bash
 ssh <host> 'cd /tmp && claude -p "say READY"'
@@ -59,9 +59,9 @@ finding worth reporting if the error message is unhelpful.
 ## Phase 0 — smoke
 
 ```bash
-node bin/beamup.mjs --help
-node bin/beamup.mjs doctor
-node bin/beamup.mjs devices
+node bin/ccbeam.mjs --help
+node bin/ccbeam.mjs doctor
+node bin/ccbeam.mjs devices
 npm test
 ```
 
@@ -71,7 +71,7 @@ Expected: help renders; `devices` lists `local` plus hosts from your
 ## Phase 1 — a conversation moves between folders (no second machine)
 
 ```bash
-BEAMUP_HOST=nonexistent node test/e2e.mjs A
+CCBEAM_HOST=nonexistent node test/e2e.mjs A
 ```
 
 Expected: **2/2 passed**. This proves a real Claude Code conversation survives a
@@ -81,7 +81,7 @@ work.
 ## Phase 2 — SSH machinery
 
 ```bash
-BEAMUP_HOST=<your-machine-B> node test/e2e.mjs
+CCBEAM_HOST=<your-machine-B> node test/e2e.mjs
 ```
 
 Expected: **5/5 passed**. This covers shipping the transcript, carrying
@@ -90,21 +90,21 @@ uncommitted work out, and bringing both back.
 ## Phase 3 — shell integration
 
 ```bash
-node bin/beamup.mjs install-shell --rc /tmp/testrc --shell zsh
+node bin/ccbeam.mjs install-shell --rc /tmp/testrc --shell zsh
 cat /tmp/testrc
-node bin/beamup.mjs install-shell --rc /tmp/testrc --shell zsh   # idempotent
-node bin/beamup.mjs uninstall-shell --rc /tmp/testrc --shell zsh
+node bin/ccbeam.mjs install-shell --rc /tmp/testrc --shell zsh   # idempotent
+node bin/ccbeam.mjs uninstall-shell --rc /tmp/testrc --shell zsh
 cat /tmp/testrc   # must be byte-identical to before
 ```
 
 Then check it works for real, against your actual shell:
 
 ```bash
-node bin/beamup.mjs install-shell
+node bin/ccbeam.mjs install-shell
 exec $SHELL
 type claude              # should say: claude is a function
 command claude --version # should still reach the real binary
-beamup uninstall-shell
+ccbeam uninstall-shell
 ```
 
 ---
@@ -118,15 +118,15 @@ Set up two throwaway repos at the same commit:
 
 ```bash
 # on A
-mkdir -p /tmp/beamup-demo && cd /tmp/beamup-demo
+mkdir -p /tmp/ccbeam-demo && cd /tmp/ccbeam-demo
 git init -q && echo "original" > file.txt
 git add -A && git -c user.email=t@t -c user.name=t commit -qm base
 git log -1 --format=%H     # note the commit
 
 # put a clone on B at the same commit, e.g.
-ssh <host> 'mkdir -p /tmp/beamup-demo'
-git push <host>:/tmp/beamup-demo-origin HEAD 2>/dev/null || \
-  ssh <host> 'cd /tmp && git clone -q /path/or/copy beamup-demo'
+ssh <host> 'mkdir -p /tmp/ccbeam-demo'
+git push <host>:/tmp/ccbeam-demo-origin HEAD 2>/dev/null || \
+  ssh <host> 'cd /tmp && git clone -q /path/or/copy ccbeam-demo'
 ```
 
 (Any method is fine — the requirement is only that B's checkout is on the **same
@@ -135,30 +135,30 @@ commit** as A's.)
 Then, on A, with an uncommitted change:
 
 ```bash
-cd /tmp/beamup-demo
+cd /tmp/ccbeam-demo
 echo "edited on machine A" > file.txt
-node /path/to/beamup/bin/beamup.mjs
+node /path/to/ccbeam/bin/ccbeam.mjs
 ```
 
 In the session:
 
 1. Say: `Remember the codeword PLATYPUS.`
-2. Run: `/beam <host>:/tmp/beamup-demo`
+2. Run: `/ccbeam:up <host>:/tmp/ccbeam-demo`
 3. **Watch what happens to your terminal.** Record it.
 4. Once you're on B, ask: `What was the codeword? And what does file.txt contain?`
 5. Have it create a file: `Write a file called from-B.txt containing "made on B".`
-6. Run: `/beam home`
+6. Run: `/ccbeam:up home`
 7. Ask: `What was the codeword?`
 8. Exit.
 
 **Report specifically:**
 
-- Did `/beam` work as typed, or did you need `/beamup:beam`? *(The
+- Did `/ccbeam:up` work as typed, or did you need `/ccbeam:up`? *(The
   short form is unverified — this is a known open question.)*
 - Did the remote session **visually redraw the earlier conversation**, or did you
   land at an empty prompt that merely remembered things?
 - Did it recall `PLATYPUS` on B? Did it see `edited on machine A` in `file.txt`?
-- After `/beam home`: is `from-B.txt` present on A? Does `file.txt` still say
+- After `/ccbeam:up home`: is `from-B.txt` present on A? Does `file.txt` still say
   `edited on machine A`? Did it still recall `PLATYPUS`?
 - How long did each transition take? Was there any confusing dead air?
 - Was it ever unclear which machine you were on?
@@ -166,20 +166,20 @@ In the session:
 Finally, confirm nothing was orphaned on B:
 
 ```bash
-ssh <host> 'ls ~/.beamup'
+ssh <host> 'ls ~/.ccbeam'
 ```
 
 ## Phase 5 — THE OTHER UNVERIFIED ONE: the interactive picker
 
-Run `beamup`, then `/beam` **with no arguments**. You should get a
+Run `ccbeam`, then `/ccbeam:up` **with no arguments**. You should get a
 machine list, then a folder list.
 
 If you can't drive a TUI directly, use tmux:
 
 ```bash
-tmux new-session -d -s cct -x 200 -y 50 'node /path/to/beamup/bin/beamup.mjs'
+tmux new-session -d -s cct -x 200 -y 50 'node /path/to/ccbeam/bin/ccbeam.mjs'
 sleep 5
-tmux send-keys -t cct '/beam' Enter
+tmux send-keys -t cct '/ccbeam:up' Enter
 sleep 8
 tmux capture-pane -t cct -p        # screenshot the picker
 tmux send-keys -t cct Down
@@ -200,13 +200,13 @@ last-used folder pre-selected? **Paste the captured panes.**
 These should all fail *gracefully*, with a plain-language explanation and no
 data loss. Report the exact wording — clarity is the feature here.
 
-1. **Unreachable machine:** `/beam definitely-not-a-host:/tmp`
-2. **Commit mismatch:** on B, `cd /tmp/beamup-demo && git commit --allow-empty -qm drift`,
+1. **Unreachable machine:** `/ccbeam:up definitely-not-a-host:/tmp`
+2. **Commit mismatch:** on B, `cd /tmp/ccbeam-demo && git commit --allow-empty -qm drift`,
    then beam there from A with a dirty file. It must **refuse to carry** and
    say which commit each side is on.
 3. **Dirty destination:** make an uncommitted edit on B, then beam there with
    a dirty file on A. It must refuse rather than overwrite.
-4. **Directory that doesn't exist on B:** `/beam <host>:/tmp/nope-not-here`
+4. **Directory that doesn't exist on B:** `/ccbeam:up <host>:/tmp/nope-not-here`
 
 After each, verify **nothing was lost on either side**.
 
@@ -225,8 +225,8 @@ filesystem intact, and a full beamOut/beamBack round trip.
 
 Two bugs this found, both of which only appear on a *second* run:
 - E2B's file API cannot overwrite an existing file in `/tmp` (sticky bit), so
-  the first beam worked and every one after it failed. Everything beamup writes
-  into the box now lives under `~/.beamup/`.
+  the first beam worked and every one after it failed. Everything ccbeam writes
+  into the box now lives under `~/.ccbeam/`.
 - `sandbox.betaPause()` reaches the API with no authorization header on e2b
   2.2.1 and fails — which would have left boxes running. `release()` now uses
   the static `Sandbox.betaPause(id, {apiKey})` and reads the state back to
@@ -248,14 +248,14 @@ the transcript is the session.
 `claude --version` because the box has to be signed in first, and signing in
 needs a terminal. So the one thing left to check by hand:
 
-1. `beamup cloud` and complete the sign-in.
-2. From a git repo: `beamup`, make an edit, `/beam cloud`.
+1. `ccbeam cloud` and complete the sign-in.
+2. From a git repo: `ccbeam`, make an edit, `/ccbeam:up cloud`.
 3. Does the TUI render properly over the relay — colours, redraw, no stray
    shell prompt? Does Ctrl-C interrupt the turn rather than kill the session?
    Does resizing the window reflow it?
-4. `/beam home`. Did the work come back? Did it print `cloud paused`?
+4. `/ccbeam:up home`. Did the work come back? Did it print `cloud paused`?
 5. Check <https://e2b.dev/dashboard>: **paused**, not running.
-6. Then `/beam cloud resume` — does the conversation you just had appear in the
+6. Then `/ccbeam:up cloud resume` — does the conversation you just had appear in the
    list, with its opening line? Does picking it redraw it? Does Ctrl-D offer to
    delete, and does `esc` still pause the box on the way out?
 
@@ -266,10 +266,10 @@ needs a terminal. So the one thing left to check by hand:
 For each phase: pass / fail / didn't run, with the actual output. Then:
 
 1. **Anything that lost or corrupted work** — highest priority by far.
-2. **Whether `/beam` resolves without the `beamup:` prefix.**
+2. **Whether `/ccbeam:up` resolves without the `ccbeam:` prefix.**
 3. **Whether the remote session visually redraws the conversation.**
 4. Anything confusing, slow, or ugly in the UX — especially moments where you
    couldn't tell which machine you were on.
-5. Exact error text for anything that failed, plus `beamup doctor <host>`.
+5. Exact error text for anything that failed, plus `ccbeam doctor <host>`.
 
 Don't fix anything. Report it.

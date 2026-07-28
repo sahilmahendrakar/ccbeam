@@ -2,7 +2,7 @@
 /**
  * The bridge from a slash command to the supervisor.
  *
- * `/beam` cannot move anything itself — a tool has no access to the
+ * `/ccbeam:up` cannot move anything itself — a tool has no access to the
  * terminal. All it does is record where you want to go. The Stop hook ends the
  * session cleanly at the turn boundary and the supervisor, which owns the
  * terminal, performs the move.
@@ -16,13 +16,13 @@ import path from "node:path";
 import readline from "node:readline";
 
 const requestFile = () =>
-  process.env.BEAMUP_REQ || path.join(os.homedir(), ".beamup", "request.json");
+  process.env.CCBEAM_REQ || path.join(os.homedir(), ".ccbeam", "request.json");
 
 const TOOLS = [
   {
     name: "beam",
     description:
-      "Move this Claude Code session to another device or folder. Call this when the user runs /beam. " +
+      "Move this Claude Code session to another device or folder. Call this when the user runs /ccbeam:up. " +
       "Pass the target exactly as the user typed it, or omit it to let them choose from a picker. " +
       "The move happens after your turn ends — reply with one short line confirming it, and do not call any other tools.",
     inputSchema: {
@@ -79,7 +79,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       return ok(id, {
         protocolVersion: params?.protocolVersion || "2024-11-05",
         capabilities: { tools: {} },
-        serverInfo: { name: "beamup", version: "0.1.0" },
+        serverInfo: { name: "ccbeam", version: "0.1.0" },
       });
     case "ping":
       return ok(id, {});

@@ -13,7 +13,7 @@ export function configDir(env = process.env) {
  * [A-Za-z0-9] collapses to a dash, so `/tmp/cct.slug_test-x` becomes
  * `-tmp-cct-slug-test-x`.
  *
- * This is the one piece of Claude Code's internals beamup depends on. The
+ * This is the one piece of Claude Code's internals ccbeam depends on. The
  * reverse mapping is deliberately never attempted: slugs are lossy (a dash in
  * the original path is indistinguishable from a separator), so anywhere we need
  * a real path we read the `cwd` field recorded inside the transcript instead.
@@ -46,9 +46,9 @@ export function newestSession(cfg, dir) {
   return best?.id ?? null;
 }
 
-/** beamup's own state lives outside Claude Code's tree. */
+/** ccbeam's own state lives outside Claude Code's tree. */
 export function stateDir() {
-  return path.join(os.homedir(), ".beamup");
+  return path.join(os.homedir(), ".ccbeam");
 }
 
 export function readState() {

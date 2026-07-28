@@ -1,12 +1,12 @@
-# beamup
+# ccbeam
 
 **Move a Claude Code session between devices.** Same conversation, same
 context, a different computer underneath.
 
-You're debugging on your laptop and need the GPU box. You type `/beam`, pick
+You're debugging on your laptop and need the GPU box. You type `/ccbeam:up`, pick
 the device, and the screen redraws with *the conversation you were just having*
 — except now every command runs over there, at native speed, with that
-machine's own `CLAUDE.md`, hooks and MCP servers. `/beam home` brings you back,
+machine's own `CLAUDE.md`, hooks and MCP servers. `/ccbeam:up home` brings you back,
 along with whatever you changed.
 
 A device is any machine you can ssh to. It is also, if you want one, a cloud
@@ -17,28 +17,28 @@ No account. No daemon. No server. It uses the SSH you already have.
 ## Install
 
 ```bash
-npm i -g beamup
-beamup install-shell   # optional: keep typing `claude`
+npm i -g ccbeam
+ccbeam install-shell   # optional: keep typing `claude`
 ```
 
-`beamup` takes the same options as `claude` and hands the terminal straight to
+`ccbeam` takes the same options as `claude` and hands the terminal straight to
 the real Claude Code — it's a supervisor, not a replacement.
 
 ```bash
-beamup                # like `claude`
-beamup --model opus   # any claude flag works
+ccbeam                # like `claude`
+ccbeam --model opus   # any claude flag works
 ```
 
 With `install-shell`, one delimited block is added to your `.bashrc`, `.zshrc`
 or `config.fish`:
 
 ```sh
-claude() { command beamup "$@"; }
+claude() { command ccbeam "$@"; }
 ```
 
 so the command you type stays `claude`. This is the same trick `nvm`, `pyenv`
 and `direnv` use. `command claude` still runs Claude Code directly, and
-`beamup uninstall-shell` restores the file exactly as it was (it's backed up
+`ccbeam uninstall-shell` restores the file exactly as it was (it's backed up
 before the first edit either way).
 
 ## Use
@@ -46,25 +46,25 @@ before the first edit either way).
 Inside a session:
 
 ```
-/beam                        pick a device, then a folder
-/beam gpu-box                pick a folder on gpu-box
-/beam gpu-box:~/trainer      go straight there
-/beam cloud                  go to your cloud box
-/beam home                   return to where this session started
+/ccbeam:up                        pick a device, then a folder
+/ccbeam:up gpu-box                pick a folder on gpu-box
+/ccbeam:up gpu-box:~/trainer      go straight there
+/ccbeam:up cloud                  go to your cloud box
+/ccbeam:up home                   return to where this session started
 ```
 
-`local` is a device like any other, so `/beam` also moves a conversation
+`local` is a device like any other, so `/ccbeam:up` also moves a conversation
 between folders on the machine you're already on — something Claude Code can't
 otherwise do mid-session.
 
 Outside a session:
 
 ```bash
-beamup devices               list devices and what they're doing
-beamup doctor gpu-box        check a device is ready
-beamup cloud                 set up the cloud box
-beamup install-shell         make `claude` beam-capable
-beamup uninstall-shell       undo that
+ccbeam devices               list devices and what they're doing
+ccbeam doctor gpu-box        check a device is ready
+ccbeam cloud                 set up the cloud box
+ccbeam install-shell         make `claude` beam-capable
+ccbeam uninstall-shell       undo that
 ```
 
 ## The picker
@@ -84,7 +84,7 @@ set up or not.
 Folders come from that device's own Claude Code history: every directory you've
 actually worked in, newest first, with branch and dirty-file count so you can
 see what you're walking into. The folder you used last is pre-selected, so
-returning somewhere is `/beam` → ⏎ → ⏎.
+returning somewhere is `/ccbeam:up` → ⏎ → ⏎.
 
 ## What travels
 
@@ -105,26 +105,26 @@ operation either verifies its assumption or refuses:
   base is how work silently disappears.
 - The destination must be **clean**, unless it's the tree you left.
 - Coming home, the folder you left must be **unchanged**. If something edited it
-  while you were away, beamup refuses and saves the incoming work to
-  `~/.beamup/incoming-<timestamp>/` rather than overwriting anything.
+  while you were away, ccbeam refuses and saves the incoming work to
+  `~/.ccbeam/incoming-<timestamp>/` rather than overwriting anything.
 
 ## The cloud box
 
-`/beam cloud` is a sandbox that behaves like any other device. The first time,
+`/ccbeam:up cloud` is a sandbox that behaves like any other device. The first time,
 it asks for an E2B key and sets itself up; after that it's two lines on screen
 and about a second.
 
 ```
-/beam cloud
+/ccbeam:up cloud
 
   · waking the cloud box
   · carried 3 changed file(s)
 ```
 
-**It runs on your account.** beamup operates no infrastructure, holds no keys
+**It runs on your account.** ccbeam operates no infrastructure, holds no keys
 and proxies nothing — your code goes from your machine to your sandbox on your
 own [E2B](https://e2b.dev) account, with nothing in between. There is no hosted
-beamup and there is not going to be one.
+ccbeam and there is not going to be one.
 
 A few decisions worth knowing about:
 
@@ -134,15 +134,15 @@ A few decisions worth knowing about:
   rent by the second, not a fresh container each time.
 - **It pauses the moment you leave**, and says so. It also can't run away from
   you: every sandbox is created with a finite timeout and `autoPause`, so even
-  if beamup is killed outright the box puts itself to sleep instead of billing
+  if ccbeam is killed outright the box puts itself to sleep instead of billing
   you until you notice.
-- **A fresh box is seeded from your laptop, not from GitHub.** beamup ships a
+- **A fresh box is seeded from your laptop, not from GitHub.** ccbeam ships a
   `git bundle` of your history so the box lands on the exact commit your
   uncommitted work was written against. That means it works on repos you've
   never pushed and branches that only exist locally — and the box never needs a
   credential for your git host.
-- **The E2B SDK is not a dependency.** It's fetched into `~/.beamup/deps` the
-  first time you set the cloud box up. Installing beamup pulls nothing for a
+- **The E2B SDK is not a dependency.** It's fetched into `~/.ccbeam/deps` the
+  first time you set the cloud box up. Installing ccbeam pulls nothing for a
   feature you haven't used.
 
 ### Leaving a conversation there, and picking it up again
@@ -151,39 +151,39 @@ Because the box persists, a conversation you took there stays there. You can
 close the laptop and come back to it:
 
 ```
-/beam cloud resume           pick up a conversation living on the box
+/ccbeam:up cloud resume           pick up a conversation living on the box
 ```
 
 ```bash
-beamup cloud sessions        list them
-beamup cloud resume          pick one up, starting a session here
-beamup cloud rm <id>         delete one
+ccbeam cloud sessions        list them
+ccbeam cloud resume          pick one up, starting a session here
+ccbeam cloud rm <id>         delete one
 ```
 
-`resume` is a **separate verb from `/beam` on purpose**. `/beam cloud` means
+`resume` is a **separate verb from `/ccbeam:up` on purpose**. `/ccbeam:up cloud` means
 *this* conversation moves there, keeping its session id — which is the whole
-reason its context survives. `/beam cloud resume` picks up a *different*
+reason its context survives. `/ccbeam:up cloud resume` picks up a *different*
 conversation and leaves the one you're in exactly where it was. If those shared
-a verb, `/beam` could silently abandon your place; they don't, so it can't.
+a verb, `/ccbeam:up` could silently abandon your place; they don't, so it can't.
 
 The session picker shows what you first said, the folder, when it was last
 touched, and marks any conversation still running. Ctrl-D deletes the
 highlighted one (with a confirm); the folder it worked in is kept, because
-beamup doesn't delete your files. Conversations untouched for 30 days are
+ccbeam doesn't delete your files. Conversations untouched for 30 days are
 pruned when the box wakes, and it says so when that happens.
 
 A note on what "detached" really means: work genuinely continues in the box
 after you disconnect, and a paused box freezes a turn mid-flight and resumes it
-intact. But beamup doesn't reattach to the old terminal — it doesn't need to.
+intact. But ccbeam doesn't reattach to the old terminal — it doesn't need to.
 The transcript *is* the session, so picking a conversation back up is just
 `claude --resume` over there, which is what every beam already does.
 
-`beamup cloud destroy` gets rid of the box. `beamup cloud repair` builds a new one.
+`ccbeam cloud destroy` gets rid of the box. `ccbeam cloud repair` builds a new one.
 
 ## Requirements
 
 On a device you beam **to**: `ssh` access, Claude Code (signed in), `node` 18+,
-and `git`. `beamup doctor <device>` tells you what's missing. The cloud box
+and `git`. `ccbeam doctor <device>` tells you what's missing. The cloud box
 installs its own.
 
 Each device signs in to Claude Code itself, with `claude auth login`. This is
@@ -191,27 +191,27 @@ deliberate and will not change — see below.
 
 ## Non-goals
 
-- **No credential forwarding, ever.** beamup will never proxy model calls
+- **No credential forwarding, ever.** ccbeam will never proxy model calls
   through your laptop or ship your token to another device. Anthropic's terms
   prohibit using Claude subscription OAuth tokens in other products or services;
   each device authenticating itself is the only correct design, not a limitation
   to be engineered around. The cloud box is no exception: it signs itself in, in
   its own terminal, and that sign-in survives because a paused sandbox keeps its
   filesystem.
-- **No hosted service, and no beamup-operated anything.** Not a relay, not a
+- **No hosted service, and no ccbeam-operated anything.** Not a relay, not a
   proxy, not a default API key, not even a sandbox image published under a
   maintainer's account. Nothing in the runtime path depends on infrastructure
   you don't control.
 - **Not a sandbox** (the ssh kind). Claude Code runs on the far machine as you,
   with your access — the same as if you'd ssh'd in and started it yourself. The
   cloud box *is* isolated, which is a reason to use it, but that's a property of
-  E2B rather than of beamup.
+  E2B rather than of ccbeam.
 - **Not team access control.** It's your devices and your keys.
 
 ## How it works
 
-1. `beamup` launches the real `claude` with a small bundled plugin and waits.
-2. `/beam` calls a tool that writes a request file. A slash command can't take
+1. `ccbeam` launches the real `claude` with a small bundled plugin and waits.
+2. `/ccbeam:up` calls a tool that writes a request file. A slash command can't take
    over the terminal, so it doesn't try.
 3. The plugin's `Stop` hook ends the session at the turn boundary — after the
    transcript is completely written.
@@ -224,7 +224,7 @@ sharing keeps the repeated calls at ~10ms each.
 
 ### Why a supervisor, and not just a plugin
 
-The plugin half needs no supervisor at all — `/beam` works perfectly well inside
+The plugin half needs no supervisor at all — `/ccbeam:up` works perfectly well inside
 a normally-installed plugin. What a plugin cannot do is perform the move.
 
 Moving means ending the local `claude`, running Claude Code on the far device
@@ -255,7 +255,7 @@ contribution.
 
 ```bash
 npm test          # unit tests — no network, no accounts
-npm run test:e2e  # end-to-end, needs a reachable host in BEAMUP_HOST
+npm run test:e2e  # end-to-end, needs a reachable host in CCBEAM_HOST
 ```
 
 The unit suite drives the real seeding and carrying logic through a fake device
@@ -266,12 +266,12 @@ The e2e suite needs a machine you can ssh into that has Claude Code signed in.
 To use your own box as that machine, add a key and an ssh alias:
 
 ```bash
-ssh-keygen -t ed25519 -f ~/.ssh/beamup_e2e -N ""
-printf 'from="127.0.0.1,::1" %s\n' "$(cat ~/.ssh/beamup_e2e.pub)" >> ~/.ssh/authorized_keys
+ssh-keygen -t ed25519 -f ~/.ssh/ccbeam_e2e -N ""
+printf 'from="127.0.0.1,::1" %s\n' "$(cat ~/.ssh/ccbeam_e2e.pub)" >> ~/.ssh/authorized_keys
 cat >> ~/.ssh/config <<'EOF'
-Host beamup-localhost
+Host ccbeam-localhost
   HostName 127.0.0.1
-  IdentityFile ~/.ssh/beamup_e2e
+  IdentityFile ~/.ssh/ccbeam_e2e
 EOF
 ```
 

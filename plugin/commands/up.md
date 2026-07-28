@@ -1,10 +1,10 @@
 ---
 description: Move this conversation to another device or folder
 argument-hint: "[device[:folder] | cloud | cloud resume | home]"
-allowed-tools: mcp__beamup__beam
+allowed-tools: mcp__ccbeam__beam
 ---
 
-Call the `mcp__beamup__beam` tool now.
+Call the `mcp__ccbeam__beam` tool now.
 
 - If the user supplied a target, pass it through verbatim as `target`: `$ARGUMENTS`
 - If they supplied nothing, call the tool with no `target` so they get the picker.

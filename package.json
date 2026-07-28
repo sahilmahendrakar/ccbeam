@@ -1,10 +1,10 @@
 {
-  "name": "beamup",
+  "name": "ccbeam",
   "version": "0.1.0",
   "description": "Move a Claude Code session between devices — your machines over ssh, or a cloud sandbox on your own account. Same conversation, different computer underneath.",
   "type": "module",
   "bin": {
-    "beamup": "bin/beamup.mjs"
+    "ccbeam": "bin/ccbeam.mjs"
   },
   "files": [
     "bin",

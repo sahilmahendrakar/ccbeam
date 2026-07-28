@@ -89,7 +89,7 @@ export async function seedRepo({ device, localDir, remoteDir, home, onProgress =
   if (already.stdout.trim() === "yes") return { seeded: false };
   if (!(await isRepo(localDir))) return { seeded: false };
 
-  const bundleDir = fs.mkdtempSync(path.join(os.tmpdir(), "beamup-seed-"));
+  const bundleDir = fs.mkdtempSync(path.join(os.tmpdir(), "ccbeam-seed-"));
   try {
     const bundle = await bundleRepo(localDir, bundleDir);
     if (!bundle.ok) return { seeded: false, error: `could not package the repo (${bundle.reason})` };
@@ -97,7 +97,7 @@ export async function seedRepo({ device, localDir, remoteDir, home, onProgress =
       onProgress(`shipping ${Math.round(bundle.bytes / 1e6)}MB of history — this is the slow part, once`);
     }
 
-    const remoteSeed = `${home}/.beamup/seed`;
+    const remoteSeed = `${home}/.ccbeam/seed`;
     await device.exec(`rm -rf ${q(remoteSeed)}`);
     const sent = await device.pushDir(bundleDir, remoteSeed);
     if (sent.code !== 0) return { seeded: false, error: `could not ship the repo: ${sent.stderr}` };

@@ -3,7 +3,7 @@
  *
  * Two things are stored, and it matters which: the E2B key, which is *yours*
  * and never leaves this machine except to talk to E2B, and the id of the
- * sandbox we created on your account so we can find it again next time. beamup
+ * sandbox we created on your account so we can find it again next time. ccbeam
  * runs no infrastructure — there is nothing here that points at anything the
  * maintainers operate.
  */
@@ -14,11 +14,11 @@ import { stateDir } from "../paths.mjs";
 export const CONFIG_FILE = () => path.join(stateDir(), "config.json");
 
 /** E2B's default sandbox image. We add node + Claude Code to it once, on first
- *  use, and the paused snapshot keeps them forever after — so beamup never
+ *  use, and the paused snapshot keeps them forever after — so ccbeam never
  *  depends on a template published under a maintainer's account. */
 export const BASE_TEMPLATE = "base";
 
-/** The box pauses itself when this expires, even if beamup is killed -9. */
+/** The box pauses itself when this expires, even if ccbeam is killed -9. */
 export const BACKSTOP_MS = 60 * 60 * 1000; // 1 hour — safe on E2B's Hobby tier
 
 /** How long a box sits idle after you leave before it pauses itself. */

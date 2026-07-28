@@ -118,14 +118,14 @@ export function devices(current = LOCAL, { cloudState = null } = {}) {
  * Where a repo lands the first time it reaches the cloud box.
  *
  * A fresh sandbox has no history to offer a folder picker and exactly one
- * sensible answer — the repo you are standing in — so beamup answers for you.
+ * sensible answer — the repo you are standing in — so ccbeam answers for you.
  */
 export function cloudWorkDir(localDir) {
   return path.posix.join("/home/user/work", path.basename(localDir));
 }
 
 /**
- * How a device's status reads in the picker and in `beamup devices`.
+ * How a device's status reads in the picker and in `ccbeam devices`.
  *
  * The cloud row says what it is costing you. That is not decoration: a tool
  * that can quietly leave a metered VM running owes you a visible answer to

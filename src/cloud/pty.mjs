@@ -29,7 +29,7 @@
  * rather than on the command line, so the tty's echo of `exec bash <path>`
  * cannot contain it — which is what makes it a reliable gate.
  */
-const READY = "__beamup_ready__";
+const READY = "__ccbeam_ready__";
 
 /**
  * Run a bash script in the sandbox with the user's terminal attached.
@@ -43,7 +43,7 @@ export async function relay(sandbox, script, { timeoutMs, envs = {}, launchFile 
 
   // Not /tmp: it is sticky, and the file API cannot overwrite an existing file
   // there, so the second beam of the session would fail where the first
-  // succeeded. Everything we write to the box lives under its own ~/.beamup.
+  // succeeded. Everything we write to the box lives under its own ~/.ccbeam.
   await sandbox.files.write(launchFile, `printf %s ${JSON.stringify(READY)}\n${script}`);
 
   // Everything up to and including the readiness marker is the shell starting
