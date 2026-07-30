@@ -142,8 +142,9 @@ A few decisions worth knowing about:
   never pushed and branches that only exist locally — and the box never needs a
   credential for your git host.
 - **The E2B SDK is not a dependency.** It's fetched into `~/.ccbeam/deps` the
-  first time you set the cloud box up. Installing ccbeam pulls nothing for a
-  feature you haven't used.
+  first time you set the cloud box up, at a pinned version. Installing ccbeam
+  pulls nothing for a feature you haven't used. The SDK needs Node 20.18.1+
+  (not 21.x), so the cloud box does too; ssh devices are fine on Node 18.
 
 ### Leaving a conversation there, and picking it up again
 

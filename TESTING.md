@@ -66,7 +66,7 @@ npm test
 ```
 
 Expected: help renders; `devices` lists `local` plus hosts from your
-`~/.ssh/config`; **12/12** unit tests pass.
+`~/.ssh/config`; **24/24** unit tests pass.
 
 ## Phase 1 — a conversation moves between folders (no second machine)
 
@@ -243,6 +243,14 @@ same pid, and pause freezes a running turn and resumes it intact. E2B's
 `commands.connect()` has no `onPty` option, so there is no visual replay of a
 live TUI — which does not matter, because reattaching is `claude --resume` and
 the transcript is the session.
+
+**The SDK is pinned exactly** (`src/cloud/sdk.mjs`), because it isn't a
+dependency and so has no lockfile in front of it. Everything above was verified
+on e2b 2.2.1; the pin is now 2.36.1, where `Sandbox.betaCreate` is gone and
+pause-on-timeout moved from `autoPause: true` to `lifecycle: {onTimeout:
+'pause'}`. That path is covered by unit tests against fakes but **has not been
+re-run against real E2B** — phase 7's C-suite is the check that matters. Note
+the cloud path now needs Node 20.18.1+ (not 21.x).
 
 **Still unverified: a real interactive session in the box.** The tests stop at
 `claude --version` because the box has to be signed in first, and signing in

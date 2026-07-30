@@ -10,6 +10,8 @@ import { slug } from "../src/paths.mjs";
 import { parseTarget } from "../src/request.mjs";
 import { seedRepo } from "../src/seed.mjs";
 import { install as installShell, rcFileFor, uninstall as uninstallShell } from "../src/shell.mjs";
+import { pauseOnTimeoutCreate } from "../src/device/e2b.mjs";
+import { nodeSupported } from "../src/cloud/sdk.mjs";
 
 let passed = 0;
 const tests = [];
@@ -418,6 +420,44 @@ test("a menu resolves, and does not spin when input ends", async () => {
     return p;
   }, []);
   assert.equal(ended.value.label, "two");
+});
+
+/**
+ * The cloud box must always be created pause-on-timeout, whichever SDK is on
+ * the machine. This is the one mistake with a silent failure mode: the box is
+ * created fine and is simply gone hours later, so it is worth pinning down
+ * against fakes rather than discovering it from a bill.
+ */
+test("a cloud box is never created without pause-on-timeout", async () => {
+  const calls = [];
+  const record = (name) => (template, opts) => (calls.push({ name, template, opts }), { sandboxId: "sb" });
+
+  // e2b <= 2.29: the beta flag. `create` exists too, and taking it would build
+  // a box that dies on timeout, so betaCreate must win.
+  const legacy = { betaCreate: record("betaCreate"), create: record("create") };
+  const a = pauseOnTimeoutCreate(legacy, "2.2.1");
+  assert.equal(a.ok, true);
+  await a.call("base", { timeoutMs: 1 });
+  assert.equal(calls[0].name, "betaCreate");
+  assert.equal(calls[0].opts.autoPause, true);
+
+  // e2b >= 2.30: betaCreate is gone and the default onTimeout is `kill`.
+  const modern = { create: record("create") };
+  const b = pauseOnTimeoutCreate(modern, "2.36.1");
+  assert.equal(b.ok, true);
+  await b.call("base", { timeoutMs: 1 });
+  assert.deepEqual(calls[1].opts.lifecycle, { onTimeout: "pause" });
+
+  // An untested major: refuse rather than create something we can't put to sleep.
+  const future = pauseOnTimeoutCreate({ create: record("create") }, "3.0.0");
+  assert.equal(future.ok, false);
+  assert.match(future.error, /never pause/);
+  assert.equal(calls.length, 2);
+});
+
+test("the cloud path knows which Node versions its SDK supports", () => {
+  for (const v of ["18.20.8", "20.18.0", "21.7.3"]) assert.equal(nodeSupported(v), false, v);
+  for (const v of ["20.18.1", "20.20.2", "22.11.0", "24.0.0"]) assert.equal(nodeSupported(v), true, v);
 });
 
 for (const [name, fn] of tests) {

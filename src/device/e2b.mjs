@@ -22,7 +22,7 @@ import path from "node:path";
 import { run } from "../exec.mjs";
 import { relay } from "../cloud/pty.mjs";
 import { BACKSTOP_MS, apiKey, patchCloud, readCloud } from "../cloud/config.mjs";
-import { ensureE2B } from "../cloud/sdk.mjs";
+import { PACKAGE, ensureE2B } from "../cloud/sdk.mjs";
 import { DEFAULT_PRUNE_DAYS, pruneSessions } from "../cloud/sessions.mjs";
 
 export const CLOUD_USER = "user";
@@ -50,6 +50,43 @@ function tmpFile(tag) {
   return path.join(fs.mkdtempSync(path.join(os.tmpdir(), `ccbeam-${tag}-`)), "bundle.tar.gz");
 }
 
+/**
+ * How to make a box that puts itself to sleep — the invariant this whole file
+ * exists to keep.
+ *
+ * When the backstop expires the box must *pause*, not die: a supervisor that
+ * gets killed should cost you nothing and lose you nothing. Which option says
+ * so changed shape mid-2.x. It was the beta flag `autoPause` up to 2.29, and is
+ * `lifecycle.onTimeout` from 2.20 on, where the default is `kill`. Both eras
+ * also ship a plain `create` that silently ignores an option it doesn't know —
+ * so getting this wrong raises nothing, creates the box happily, and simply
+ * loses it hours later along with its Claude Code sign-in.
+ *
+ * So: pick by capability rather than by version number, and on a major nobody
+ * has tested, refuse instead of guessing. A cloud box you can't make is a bad
+ * afternoon; a cloud box that quietly never pauses is a bill and a lost login.
+ */
+export function pauseOnTimeoutCreate(Sandbox, version) {
+  if (typeof Sandbox?.betaCreate === "function") {
+    return { ok: true, call: (template, opts) => Sandbox.betaCreate(template, { ...opts, autoPause: true }) };
+  }
+  if (version && !/^2\./.test(version)) {
+    return {
+      ok: false,
+      error:
+        `the installed ${PACKAGE} SDK (${version}) is newer than ccbeam knows how to keep asleep — ` +
+        `refusing to create a box that might never pause. Please open an issue.`,
+    };
+  }
+  if (typeof Sandbox?.create !== "function") {
+    return { ok: false, error: `the installed ${PACKAGE} SDK (${version ?? "unknown"}) has no usable create()` };
+  }
+  return {
+    ok: true,
+    call: (template, opts) => Sandbox.create(template, { ...opts, lifecycle: { onTimeout: "pause" } }),
+  };
+}
+
 export class E2BDevice {
   /** Pruning is a per-process housekeeping chore, not a per-connection one. */
   static pruned = false;
@@ -62,9 +99,12 @@ export class E2BDevice {
 
   /** The SDK, fetched on first use. */
   async sdk({ onProgress } = {}) {
-    if (this._sdk) return { ok: true, e2b: this._sdk };
+    if (this._sdk) return { ok: true, e2b: this._sdk, version: this._sdkVersion };
     const loaded = await ensureE2B({ onProgress });
-    if (loaded.ok) this._sdk = loaded.e2b;
+    if (loaded.ok) {
+      this._sdk = loaded.e2b;
+      this._sdkVersion = loaded.version;
+    }
     return loaded;
   }
 
@@ -112,14 +152,13 @@ export class E2BDevice {
     if (!loaded.ok) return { ok: false, error: loaded.error };
     const { Sandbox } = loaded.e2b;
 
+    const chosen = pauseOnTimeoutCreate(Sandbox, loaded.version);
+    if (!chosen.ok) return chosen;
+
     try {
-      this.sandbox = await Sandbox.betaCreate(template, {
+      this.sandbox = await chosen.call(template, {
         apiKey: key,
         timeoutMs: BACKSTOP_MS,
-        // The whole safety story: when the timeout expires the box *pauses*
-        // rather than dies, so a crashed supervisor costs you nothing and
-        // loses you nothing.
-        autoPause: true,
         metadata: { managedBy: "ccbeam" },
       });
     } catch (err) {
@@ -291,7 +330,12 @@ export class E2BDevice {
     if (!loaded.ok) return { warn: `could not pause the cloud box: ${loaded.error}` };
 
     try {
-      await loaded.e2b.Sandbox.betaPause(sandbox.sandboxId, { apiKey: key });
+      // `betaPause` graduated to `pause`; both are present today, and taking
+      // the stable name first means the beta one can disappear without this
+      // being the thing that breaks.
+      const { Sandbox } = loaded.e2b;
+      const pause = typeof Sandbox.pause === "function" ? Sandbox.pause : Sandbox.betaPause;
+      await pause.call(Sandbox, sandbox.sandboxId, { apiKey: key });
     } catch (err) {
       return {
         warn: `could not pause the cloud box: ${err?.message ?? err}. It will pause itself within the hour.`,
