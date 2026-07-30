@@ -140,14 +140,21 @@ async function establishAuth(device) {
   process.stdout.write(
     [
       "",
-      dim("  Claude Code is about to open in the cloud box. Sign in there, then"),
-      dim("  type /exit to come back here. Nothing is copied from this machine."),
+      dim("  The sign-in flow is about to open in the cloud box. Follow it there;"),
+      dim("  it returns here on its own. Nothing is copied from this machine."),
+      "",
+      dim("  This is a sign-in, not a beam — there is no conversation and no"),
+      dim("  /ccbeam:up in it. You get those when you beam in afterwards."),
       "",
     ].join("\n"),
   );
   await ask("press enter when ready");
 
-  await device.attach(`export PATH="$HOME/.npm-global/bin:$PATH"; cd "$HOME"; claude`);
+  // `claude auth login` rather than a whole session: it does the one thing that
+  // needs a terminal, then exits. Opening a bare `claude` here used to leave
+  // people sitting in a plugin-less session in the box wondering where
+  // /ccbeam:up went — a real confusion, and a fair one.
+  await device.attach(`export PATH="$HOME/.npm-global/bin:$PATH"; cd "$HOME"; claude auth login`);
 
   const verified = await device.exec(
     `export PATH="$HOME/.npm-global/bin:$PATH"; claude -p ok --max-turns 1 >/dev/null 2>&1 && echo yes || echo no`,

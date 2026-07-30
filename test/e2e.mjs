@@ -16,7 +16,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { cleanEnv, run } from "../src/exec.mjs";
 import { configDir, projectDir, slug } from "../src/paths.mjs";
-import { checkDevice, beamBack, beamOut } from "../src/move.mjs";
+import { checkDevice, beamBack, beamOut, checkPlugin, pushRuntime, remoteRuntime } from "../src/move.mjs";
 import { SshDevice } from "../src/device/ssh.mjs";
 
 const HOST = process.env.CCBEAM_HOST || "ccbeam-localhost";
@@ -171,6 +171,31 @@ test("B3: returning brings the transcript and the work back", async () => {
   assert.match(transcript, /worked remotely/, "the remote half of the conversation should have come home");
   assert.equal(fs.readFileSync(path.join(local, "server-only.txt"), "utf8"), "made on the server\n");
   assert.equal(fs.readFileSync(path.join(local, "tracked.txt"), "utf8"), "written on the laptop\n");
+});
+
+test("B5: the plugin we ship actually loads over there, and replaces what was there", async () => {
+  const info = await checkDevice(device);
+
+  // A file this version doesn't have, left where a previous version's would be.
+  const stale = `${remoteRuntime(info.home)}/plugin/commands/gone.md`;
+  await device.exec(`mkdir -p $(dirname ${JSON.stringify(stale)}) && echo x > ${JSON.stringify(stale)}`);
+
+  const pushed = await pushRuntime(device, info.home);
+  assert.equal(pushed.code, 0, `pushing the runtime failed: ${pushed.stderr}`);
+  assert.equal(
+    (await device.exec(`test -e ${JSON.stringify(stale)} && echo yes || echo no`)).stdout.trim(),
+    "no",
+    "a push must replace the runtime, not merge into a previous one",
+  );
+
+  // The property that matters: Claude Code over there can load it, so there is
+  // a way back. Without this, a beam lands you somewhere with no /ccbeam:up.
+  const plugin = await checkPlugin(device, info);
+  assert.equal(plugin.ok, true, `the plugin did not load on ${HOST}: ${plugin.error}`);
+
+  // And the check is not vacuous — it fails when the plugin isn't there.
+  const missing = await checkPlugin(device, { ...info, home: "/nonexistent" });
+  assert.equal(missing.ok, false, "checkPlugin should refuse a directory with no plugin in it");
 });
 
 test("B4: a conversation survives a round trip through the supervisor", async () => {

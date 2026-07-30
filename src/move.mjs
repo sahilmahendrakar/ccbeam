@@ -29,9 +29,40 @@ export async function pushRuntime(device, home) {
     await run("cp", ["-a", path.join(PKG_ROOT, dir), stage]);
   }
   await run("cp", ["-a", path.join(PKG_ROOT, "package.json"), stage]);
+  // Replace rather than merge. Unpacking over what's already there leaves files
+  // this version has deleted — a device beamed to before the /beam -> /ccbeam:up
+  // rename still had the old command sitting next to the new one, and a stale
+  // runtime is worse than none: it looks like a successful push.
+  await device.exec(`rm -rf ${q(remoteRuntime(home))}`);
   const res = await device.pushDir(stage, remoteRuntime(home));
   fs.rmSync(stage, { recursive: true, force: true });
   return res;
+}
+
+/**
+ * Can the far side actually load the plugin?
+ *
+ * A transcript that arrives and a shell that works are not enough: without the
+ * plugin there is no `/ccbeam:up` over there, which means no way back. You find
+ * that out while sitting in the destination, where the only exit is quitting
+ * the session and leaving whatever you did behind. So ask before handing over
+ * the terminal, and treat a no as a reason not to go.
+ *
+ * `claude plugin details` is the deterministic form of the question — it either
+ * prints the component inventory or says the plugin isn't there.
+ */
+export async function checkPlugin(device, info) {
+  const claude = info.claude || "claude";
+  const r = await device.exec(
+    `${q(claude)} --plugin-dir ${q(remotePlugin(info.home))} plugin details ccbeam 2>&1`,
+    { timeout: 60000 },
+  );
+  const out = `${r.stdout ?? ""}${r.stderr ?? ""}`.trim();
+  // A Claude Code too old to answer the question is not evidence of a problem;
+  // don't strand someone over a check their version can't run.
+  if (/unknown (command|option)/i.test(out)) return { ok: true, unchecked: true };
+  if (r.code === 0 && /Component inventory/i.test(out)) return { ok: true };
+  return { ok: false, error: out.split("\n").find(Boolean) || `\`claude plugin details\` exited ${r.code}` };
 }
 
 /** Stage just this session's files — never the whole project directory. */
@@ -92,7 +123,15 @@ export async function beamOut({ device, remoteDir, localDir, sessionId, carry = 
   const mk = await device.exec(`mkdir -p ${q(remoteDir)}`);
   if (mk.code !== 0) return { ok: false, error: `cannot create ${remoteDir} on ${device.name}` };
 
-  await pushRuntime(device, info.home);
+  const runtime = await pushRuntime(device, info.home);
+  if (runtime.code !== 0) return { ok: false, error: `could not ship the plugin: ${runtime.stderr}` };
+  const plugin = await checkPlugin(device, info);
+  if (!plugin.ok) {
+    return {
+      ok: false,
+      error: `${device.name} can't load ccbeam's plugin, so there would be no way back from there:\n  ${plugin.error}`,
+    };
+  }
 
   // The transcript, which is what makes this the same conversation.
   const stage = stageSession(configDir(), localDir, sessionId);
@@ -170,6 +209,13 @@ export async function beamAdopt({ device, sessionId, remoteDir }) {
 
   const pushed = await pushRuntime(device, info.home);
   if (pushed.code !== 0) return { ok: false, error: `could not ship the plugin: ${pushed.stderr}` };
+  const plugin = await checkPlugin(device, info);
+  if (!plugin.ok) {
+    return {
+      ok: false,
+      error: `${device.name} can't load ccbeam's plugin, so there would be no way back from there:\n  ${plugin.error}`,
+    };
+  }
 
   return { ok: true, info, dir: remoteDir };
 }
