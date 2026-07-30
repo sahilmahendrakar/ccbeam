@@ -35,7 +35,7 @@ export function tilde(p, home = process.env.HOME) {
 export function banner(device, dir, { local = false, cloud = false } = {}) {
   const mark = local ? "⌂" : cloud ? "☁" : "⚡";
   const where = local ? `local:${tilde(dir)}` : `${device}:${tilde(dir)}`;
-  const hint = local ? "" : dim("  ·  /ccbeam:up home to return");
+  const hint = local ? "" : dim("  ·  /ccbeam:home to return");
   process.stdout.write(`\n${cyan(bold(` ${mark} ${where}`))}${hint}\n\n`);
 }
 

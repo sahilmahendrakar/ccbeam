@@ -58,7 +58,7 @@ Inside the session:
   /ccbeam:up gpu-box[:~/src]     go straight there
   /ccbeam:up cloud               take this conversation to your cloud box
   /ccbeam:up cloud resume        pick up a conversation already living there
-  /ccbeam:up home                return to where this session started
+  /ccbeam:home                   return to where this session started
 
 Devices come from your ~/.ssh/config — there is nothing to install or run on
 the far side beyond Claude Code, node and git. \`cloud\` is a sandbox on your
@@ -156,6 +156,16 @@ async function main() {
       if (!dest) {
         await releasePendingWake();
         note("staying put");
+        continue;
+      }
+
+      // Asking to go where you already are. `/ccbeam:home` makes this easy to
+      // type by accident, and running the machinery would mean shipping a
+      // runtime and carrying a diff from a folder to itself — work whose only
+      // possible outcome is the state we're already in.
+      if (!dest.adopt && dest.device === cur.device && dest.dir === cur.dir) {
+        await releasePendingWake();
+        note(cur.device === origin.device && cur.dir === origin.dir ? "already home" : "already here");
         continue;
       }
 

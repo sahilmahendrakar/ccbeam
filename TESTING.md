@@ -12,7 +12,7 @@ Report what actually happened, including anything that looked wrong but passed.
 ## Before you start — read this
 
 - **Never run the carry tests in a repository whose uncommitted work matters.**
-  `/ccbeam:up` moves your dirty diff to another machine and `/ccbeam:up home` moves it home,
+  `/ccbeam:up` moves your dirty diff to another machine and `/ccbeam:home` moves it home,
   replacing the working tree in the process. Use throwaway repos created by the
   steps below.
 - `install-shell` edits `~/.bashrc` / `~/.zshrc` / `config.fish`. It backs the
@@ -74,7 +74,7 @@ Expected: help renders; `devices` lists `local` plus hosts from your
 CCBEAM_HOST=nonexistent node test/e2e.mjs A
 ```
 
-Expected: **2/2 passed**. This proves a real Claude Code conversation survives a
+Expected: **3/3 passed**. This proves a real Claude Code conversation survives a
 move and recalls its context. If this fails, stop and report — nothing else will
 work.
 
@@ -84,7 +84,7 @@ work.
 CCBEAM_HOST=<your-machine-B> node test/e2e.mjs
 ```
 
-Expected: **5/5 passed**. This covers shipping the transcript, carrying
+Expected: **8/8 passed** (3 local + 5 ssh). This covers shipping the transcript, carrying
 uncommitted work out, and bringing both back.
 
 ## Phase 3 — shell integration
@@ -147,18 +147,19 @@ In the session:
 3. **Watch what happens to your terminal.** Record it.
 4. Once you're on B, ask: `What was the codeword? And what does file.txt contain?`
 5. Have it create a file: `Write a file called from-B.txt containing "made on B".`
-6. Run: `/ccbeam:up home`
+6. Run: `/ccbeam:home`
 7. Ask: `What was the codeword?`
 8. Exit.
 
 **Report specifically:**
 
-- Did `/ccbeam:up` work as typed, or did you need `/ccbeam:up`? *(The
-  short form is unverified — this is a known open question.)*
+- Do both `/ccbeam:up` and `/ccbeam:home` show up in the slash menu, and does
+  the unambiguous short form (`/up`, `/home`) resolve interactively? *(Only the
+  namespaced form is verified — print mode requires it.)*
 - Did the remote session **visually redraw the earlier conversation**, or did you
   land at an empty prompt that merely remembered things?
 - Did it recall `PLATYPUS` on B? Did it see `edited on machine A` in `file.txt`?
-- After `/ccbeam:up home`: is `from-B.txt` present on A? Does `file.txt` still say
+- After `/ccbeam:home`: is `from-B.txt` present on A? Does `file.txt` still say
   `edited on machine A`? Did it still recall `PLATYPUS`?
 - How long did each transition take? Was there any confusing dead air?
 - Was it ever unclear which machine you were on?
@@ -261,7 +262,7 @@ needs a terminal. So the one thing left to check by hand:
 3. Does the TUI render properly over the relay — colours, redraw, no stray
    shell prompt? Does Ctrl-C interrupt the turn rather than kill the session?
    Does resizing the window reflow it?
-4. `/ccbeam:up home`. Did the work come back? Did it print `cloud paused`?
+4. `/ccbeam:home`. Did the work come back? Did it print `cloud paused`?
 5. Check <https://e2b.dev/dashboard>: **paused**, not running.
 6. Then `/ccbeam:up cloud resume` — does the conversation you just had appear in the
    list, with its opening line? Does picking it redraw it? Does Ctrl-D offer to

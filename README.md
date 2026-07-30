@@ -6,7 +6,7 @@ context, a different computer underneath.
 You're debugging on your laptop and need the GPU box. You type `/ccbeam:up`, pick
 the device, and the screen redraws with *the conversation you were just having*
 — except now every command runs over there, at native speed, with that
-machine's own `CLAUDE.md`, hooks and MCP servers. `/ccbeam:up home` brings you back,
+machine's own `CLAUDE.md`, hooks and MCP servers. `/ccbeam:home` brings you back,
 along with whatever you changed.
 
 A device is any machine you can ssh to. It is also, if you want one, a cloud
@@ -50,8 +50,11 @@ Inside a session:
 /ccbeam:up gpu-box                pick a folder on gpu-box
 /ccbeam:up gpu-box:~/trainer      go straight there
 /ccbeam:up cloud                  go to your cloud box
-/ccbeam:up home                   return to where this session started
+/ccbeam:home                      return to where this session started
 ```
+
+`/ccbeam:home` works from wherever you are, however many hops in — and
+`/ccbeam:up home` is the same thing if that's what your fingers reach for.
 
 `local` is a device like any other, so `/ccbeam:up` also moves a conversation
 between folders on the machine you're already on — something Claude Code can't

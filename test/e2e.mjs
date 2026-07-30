@@ -92,6 +92,28 @@ test("A2: the /ccbeam:up slash command drives a real move", async () => {
   );
 });
 
+test("A3: /ccbeam:home comes back from wherever the session is", async () => {
+  const from = tmp("home-from");
+  const via = tmp("home-via");
+  const codeword = "PERISCOPE";
+
+  // Out to another folder by tool, home by the dedicated command, then a third
+  // turn that must run back in the folder we started in.
+  const { out } = await supervise(from, [
+    `The codeword is ${codeword}. Now call the mcp__ccbeam__beam tool with target "local:${via}".`,
+    "/ccbeam:home",
+    // Asking again from home: the supervisor should say so rather than push a
+    // runtime and carry a diff from a folder to itself.
+    "/ccbeam:home",
+    "Reply with only the codeword mentioned earlier in this conversation.",
+  ]);
+
+  assert.match(out, new RegExp(codeword), `the session did not come home with its context.\n${out}`);
+  assert.match(out, /already home/, `a second /ccbeam:home should be recognised as a no-op.\n${out}`);
+  const back = fs.readdirSync(projectDir(configDir(), from)).filter((f) => f.endsWith(".jsonl"));
+  assert.equal(back.length, 1, `the session should have landed back in ${from}`);
+});
+
 // ---------------------------------------------------------------- Part B ----
 
 test("B1: the device reports itself ready", async () => {
