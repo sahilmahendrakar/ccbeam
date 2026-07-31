@@ -1,14 +1,14 @@
-# ccbeam
+# Claude Code Beam
 
-**Move a Claude Code session between your devices.** Same conversation, same
-context, a different computer underneath.
+**Teleport a Claude Code session between your devices.** Same conversation, same
+context, across different machines.
 
 <p align="center">
   <!-- Absolute so it survives npm's renderer, which drops relative images. -->
   <img src="https://raw.githubusercontent.com/sahilmahendrakar/ccbeam/main/docs/demo/ccbeam.gif" alt="Beaming a session to gpu-box, running the tests there, and coming home with the changes" width="100%">
 </p>
 
-The bug only reproduces on the Linux box. You type `/ccbeam:up` and pick it.
+Teleport to a different environment (remote desktop, cloud, etc.) with `/ccbeam:up`.
 
 The conversation picks up over there with its context intact — same session id,
 nothing summarised — and your uncommitted changes travel with it. From then on
@@ -273,8 +273,5 @@ MIT.
 ---
 
 Not affiliated with, endorsed by, or sponsored by Anthropic. Claude and Claude
-Code are trademarks of Anthropic, PBC. Claude Code has its own built-in
-`/teleport`, which moves a session between your terminal and Claude Code on the
-web — a different thing from this, which moves sessions between your own
-devices. Not affiliated with the Apache Beam project or Gravitational's
+Code are trademarks of Anthropic, PBC. Not affiliated with the Apache Beam project or Gravitational's
 Teleport.
