@@ -383,6 +383,8 @@ test("prompts actually return what was typed at a terminal", async () => {
 
 test("a typed secret comes back whole and never appears on screen", async () => {
   const { askSecret } = await import("../src/prompt.mjs");
+  // Shaped like an E2B key, deliberately not one. Never paste a real credential
+  // into a test: this line was a truncated live key for eight commits.
   const key = "e2b_0123456789abcdef0123456789abcdef01234567";
 
   // Typed one character at a time, and pasted in one chunk — both must work.
