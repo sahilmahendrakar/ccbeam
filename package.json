@@ -6,6 +6,15 @@
   "bin": {
     "ccbeam": "bin/ccbeam.mjs"
   },
+  "author": "Sahil Mahendrakar",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sahilmahendrakar/ccbeam.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sahilmahendrakar/ccbeam/issues"
+  },
+  "homepage": "https://github.com/sahilmahendrakar/ccbeam#readme",
   "files": [
     "bin",
     "src",

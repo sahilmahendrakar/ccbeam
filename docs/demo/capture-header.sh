@@ -50,6 +50,26 @@ perl -0777 -pe '
 ' "$raw" > "$OUT"
 rm -f "$raw"
 
+# The welcome box names the signed-in account. That is a real email address on
+# its way into a README GIF, so swap it for a placeholder.
+#
+# The box survives this because every element after the text jumps to an
+# absolute column (\e[54G and friends) — only the text itself is flow-dependent.
+# Its own \e[<n>G is rewritten to keep the replacement centred on the same span.
+perl -0777 -i -pe '
+  s{\e\[(\d+)G((?:\e\[[0-9;]*m)*)([^\e\n]*@[^\e\n]*)}{
+    my ($col, $sgr, $txt) = ($1, $2, $3);
+    my $new = "you\@example.com'"'"'s Organization";
+    my $start = int($col + (length($txt) - length($new)) / 2);
+    $start = 1 if $start < 1;
+    "\e[${start}G$sgr$new";
+  }ge;
+' "$OUT"
+
+if grep -q '@' "$OUT" && ! grep -q 'you@example.com' "$OUT"; then
+  printf 'WARNING: an address survived the scrub — check %s by hand\n' "$OUT" >&2
+fi
+
 printf 'wrote %s (%s bytes)\n' "$OUT" "$(wc -c < "$OUT")"
 printf 'the capture holds whatever else was on screen (release notes, promos);\n'
 printf 'demo.sh clears everything below the box, so only the header shows.\n'

@@ -26,7 +26,7 @@ servers. `/ccbeam:home` brings you back, with whatever you changed.
 ## Install
 
 ```bash
-npm i -g sahilmahendrakar/ccbeam
+npm i -g ccbeam
 ccbeam install-shell   # optional: keep typing `claude`
 ```
 
@@ -248,7 +248,7 @@ deliberate — see below.
 There's no protocol to speak and no daemon on the far side; ssh connection
 sharing keeps the repeated calls at ~10ms each.
 
-[**docs/design.md**](docs/design.md) covers why the supervisor has to exist,
+[**docs/design.md**](https://github.com/sahilmahendrakar/ccbeam/blob/main/docs/design.md) covers why the supervisor has to exist,
 and how to add a device kind — Fly Machines, Modal, Daytona and plain VMs are
 all a fifty-line `SshDevice` plus a lifecycle, which is the intended shape of a
 contribution.
@@ -262,8 +262,8 @@ npm run test:e2e  # end-to-end, needs a reachable host in CCBEAM_HOST
 
 The unit suite drives the real seeding and carrying logic through a fake device
 that shells out locally, so bundle → clone → patch is exercised without a host.
-Setup for the e2e suite is in [docs/design.md](docs/design.md#development);
-[TESTING.md](TESTING.md) is the manual brief for the paths a machine can't check
+Setup for the e2e suite is in [docs/design.md](https://github.com/sahilmahendrakar/ccbeam/blob/main/docs/design.md#development);
+[TESTING.md](https://github.com/sahilmahendrakar/ccbeam/blob/main/TESTING.md) is the manual brief for the paths a machine can't check
 by itself.
 
 ## Licence
